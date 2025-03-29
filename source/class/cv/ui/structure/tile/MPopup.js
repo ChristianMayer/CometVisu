@@ -21,6 +21,16 @@
  * Handles cv-popup children and some general popup tasks, like global registration and close on click outside, modal blocker etc.
  */
 qx.Mixin.define('cv.ui.structure.tile.MPopup', {
+
+  /*
+  ***********************************************
+    CONSTRUCTOR
+  ***********************************************
+  */
+  construct() {
+    this._onPointerDownBounded = this._onPointerDown.bind(this);
+    this._openPopupChildBounded = this._openPopupChild.bind(this);
+  },
   /*
   ***********************************************
     STATICS
@@ -41,11 +51,13 @@ qx.Mixin.define('cv.ui.structure.tile.MPopup', {
   */
   members: {
     _childPopup: null,
+    _onPointerDownBounded: null,
+    _openPopupChildBounded: null,
 
     _initPopupChild() {
       const popup = (this._childPopup = this._element.querySelector(':scope > cv-popup'));
       if (popup) {
-        qx.event.Registration.addListener(this._element, 'tap', this._openPopupChild, this);
+        this._element.addEventListener('click', this._openPopupChildBounded);
 
         // we need to tell the parent widget that is inside a group that wen have a popup here
         let parent = popup.parentElement;
@@ -78,7 +90,7 @@ qx.Mixin.define('cv.ui.structure.tile.MPopup', {
     },
 
     registerModalPopup() {
-      qx.event.Registration.addListener(document, 'pointerdown', this._onPointerDown, this);
+      document.addEventListener('pointerup', this._onPointerDownBounded);
 
       let blocker = document.body.querySelector('.modal-popup-blocker');
       if (!blocker) {
@@ -91,7 +103,7 @@ qx.Mixin.define('cv.ui.structure.tile.MPopup', {
     },
 
     unregisterModalPopup() {
-      qx.event.Registration.removeListener(document, 'pointerdown', this._onPointerDown, this);
+      document.removeEventListener('pointerup', this._onPointerDownBounded);
 
       const index = cv.ui.structure.tile.MPopup.openedPopups.indexOf(this);
       cv.ui.structure.tile.MPopup.openedPopups.splice(index, 1);
@@ -102,10 +114,12 @@ qx.Mixin.define('cv.ui.structure.tile.MPopup', {
     },
 
     _onPointerDown(ev) {
-      if (!cv.util.Tree.isChildOf(ev.getTarget(), this._element)) {
-        // clicked outside -> close
-        this.close();
+      const element = this._headerFooterParent || this._element;
+      if (!cv.util.Tree.isChildOf(ev.target, element)) {
         ev.preventDefault();
+        ev.stopImmediatePropagation();
+        // clicked outside -> close (with delay to capture composed events)
+        qx.event.Timer.once(this.close, this, 100);
       }
     }
   },
@@ -116,7 +130,7 @@ qx.Mixin.define('cv.ui.structure.tile.MPopup', {
   ***********************************************
   */
   destruct() {
-    qx.event.Registration.removeListener(this._element, 'tap', this._openPopupChild, this);
+    this._element.removeEventListener('click', this._openPopupChildBounded);
 
     this._childPopup = null;
   }

@@ -21,7 +21,7 @@
  * MQTT client
  */
 qx.Class.define('cv.io.mqtt.Client', {
-  extend: qx.core.Object,
+  extend: cv.io.AbstractClient,
   implement: cv.io.IClient,
 
   /*
@@ -41,25 +41,6 @@ qx.Class.define('cv.io.mqtt.Client', {
 
   /*
   ***********************************************
-    PROPERTIES
-  ***********************************************
-  */
-  properties: {
-    connected: {
-      check: 'Boolean',
-      init: false,
-      event: 'changeConnected'
-    },
-
-    server: {
-      check: 'String',
-      nullable: true,
-      event: 'changedServer'
-    }
-  },
-
-  /*
-  ***********************************************
     MEMBERS
   ***********************************************
   */
@@ -68,7 +49,9 @@ qx.Class.define('cv.io.mqtt.Client', {
      * @var {Paho.MQTT.Client}
      */
     _client: null,
+    _clientOptions: null,
     _type: null,
+    addresses: null,
 
     /**
      * Returns the current backend configuration
@@ -108,6 +91,10 @@ qx.Class.define('cv.io.mqtt.Client', {
       return null;
     },
 
+    getProviderData: function (name, format) {
+      return null;
+    },
+
     /**
      * Set a subset of addresses the client should request initially (e.g. the ones one the start page).
      * This can be used to increase the init state loading speed by sending an initial request with a smaller
@@ -125,7 +112,15 @@ qx.Class.define('cv.io.mqtt.Client', {
      *
      */
     subscribe(addresses, filters) {
+      this.addresses = addresses ? addresses : [];
       addresses.forEach(value => this._client.subscribe(value));
+    },
+
+    addSubscription(address) {
+      if (!this.addresses.includes(address)) {
+        this.addresses.push(address);
+        this._client.subscribe(address);
+      }
     },
 
     /**
@@ -134,10 +129,9 @@ qx.Class.define('cv.io.mqtt.Client', {
      *
      * @param loginOnly {Boolean} if true only login and backend configuration, no subscription
      *                            to addresses (default: false)
-     * @param credentials {Map} map with "username" and "password" (optional)
-     * @param callback {Function} call this function when login is done
-     * @param context {Object} context for the callback (this)
-     *
+     * @param credentials {{username: string?, password: string?}?} map with "username" and "password" (optional)
+     * @param callback {Function?} call this function when login is done
+     * @param context {Object?} context for the callback (this)
      */
     login(loginOnly, credentials, callback, context) {
       let self = this;
@@ -182,14 +176,20 @@ qx.Class.define('cv.io.mqtt.Client', {
       if (this._backendUrl.username !== '') {
         options.userName = this._backendUrl.username;
       }
+      if ((credentials?.username ?? '') !== '') {
+        options.userName = credentials.username;
+      }
       if (this._backendUrl.password !== '') {
         options.password = this._backendUrl.password;
+      }
+      if ((credentials?.password ?? '') !== '') {
+        options.password = credentials.password;
       }
 
       try {
         this._client = new Paho.MQTT.Client(
           this._backendUrl.toString(),
-          'CometVisu_' + Math.random().toString(16).substr(2, 8)
+          'CometVisu_' + (cv.Config.clientID ?? '') + Math.random().toString(16).slice(2, 10)
         );
       } catch (e) {
         self.error('MQTT Client error:', e);
@@ -206,13 +206,25 @@ qx.Class.define('cv.io.mqtt.Client', {
       this._client.onMessageArrived = function (message) {
         let update = {};
         update[message.topic] = message.payloadString;
+
+        self.record('update', update);
         self.update(update);
       };
 
+      this._clientOptions = options;
+      this.__connect();
+    },
+
+    /**
+     * Connect to the MQTT server
+     */
+    __connect() {
       try {
-        this._client.connect(options);
+        if (!cv.report.Record.REPLAYING) {
+          this._client.connect(this._clientOptions);
+        }
       } catch (e) {
-        onFailure({
+        this._clientOptions.onFailure({
           errorMessage: e.toString(),
           errorCode: 'login -> _client.connect(' + this._backendUrl + ')'
         });
@@ -224,6 +236,9 @@ qx.Class.define('cv.io.mqtt.Client', {
      * @param req {qx.io.request.Xhr}
      */
     authorize(req) {},
+    canAuthorize() {
+      return false;
+    },
 
     /**
      * return the relative path to a resource on the currently used backend
@@ -278,7 +293,10 @@ qx.Class.define('cv.io.mqtt.Client', {
      * Restart the connection
      * @param full
      */
-    restart(full) {},
+    restart(full) {
+      this.terminate();
+      this.__connect();
+    },
 
     /**
      * Handle the incoming state updates. This method is not implemented by the client itself.

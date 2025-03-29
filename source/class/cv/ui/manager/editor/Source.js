@@ -66,34 +66,45 @@ qx.Class.define('cv.ui.manager.editor.Source', {
     TITLE: qx.locale.Manager.tr('Texteditor'),
     COUNTER: 0,
     MONACO_EXTENSION_REGEX: null,
+    FALLBACK_EXTENSION_REGEX: /\.(xml|xsd|html|php|css|js|svg|json|md|yaml|conf|ts|rst|py|txt)$/i,
     SUPPORTED_FILES(file) {
       let filename = typeof file === 'string' ? file : file.getFullPath().toLowerCase();
-      if (window.monaco && window.monaco.languages) {
-        if (!cv.ui.manager.editor.Source.MONACO_EXTENSION_REGEX) {
-          // monaco has already been loaded, we can use its languages configuration to check if this file is supported
-          const extensions = [];
-          monaco.languages.getLanguages().forEach(function (lang) {
-            if (lang.extensions) {
-              lang.extensions.forEach(function (ext) {
-                ext = ext.replace(/\./g, '\\.');
-                if (extensions.indexOf(ext) === -1) {
-                  extensions.push(ext);
-                }
-              });
-            }
-          });
-          cv.ui.manager.editor.Source.MONACO_EXTENSION_REGEX = new RegExp('(' + extensions.join('|') + ')$');
-        }
-        return cv.ui.manager.editor.Source.MONACO_EXTENSION_REGEX.test(filename);
-      }
-      return /\.(xml|html|php|css|js|svg|json|md|yaml|conf|ts|rst|py|txt)$/i.test(filename);
+      const extRegex = cv.ui.manager.editor.Source.getExtensionRegex();
+      return extRegex.test(filename);
     },
     DEFAULT_FOR: /^(demo|\.)?\/?visu_config.*\.xml/,
     ICON: cv.theme.dark.Images.getIcon('text', 18),
 
+    getExtensionRegex() {
+      if (!cv.ui.manager.editor.Source.MONACO_EXTENSION_REGEX) {
+        if (window.monaco && window.monaco.languages) {
+          if (!cv.ui.manager.editor.Source.MONACO_EXTENSION_REGEX) {
+            // monaco has already been loaded, we can use its languages configuration to check if this file is supported
+            const extensions = ['\\.xsd'];
+            monaco.languages.getLanguages().forEach(function (lang) {
+              if (lang.extensions) {
+                lang.extensions.forEach(function (ext) {
+                  ext = ext.replace(/\./g, '\\.');
+                  if (extensions.indexOf(ext) === -1) {
+                    extensions.push(ext);
+                  }
+                });
+              }
+            });
+            cv.ui.manager.editor.Source.MONACO_EXTENSION_REGEX = new RegExp('(' + extensions.join('|') + ')$');
+          }
+        }
+      }
+      return cv.ui.manager.editor.Source.MONACO_EXTENSION_REGEX || cv.ui.manager.editor.Source.FALLBACK_EXTENSION_REGEX;
+    },
+
     load(callback, context) {
       const version = qx.core.Environment.get('qx.debug') ? 'dev' : 'min';
-      const sourcePath = qx.util.Uri.getAbsolute(qx.util.LibraryManager.getInstance().get('cv', 'resourceUri') + '/..');
+      let resourceUri = qx.util.LibraryManager.getInstance().get('cv', 'resourceUri');
+      if (!resourceUri.endsWith('/')) {
+        resourceUri += '/';
+      }
+      const sourcePath = qx.util.Uri.getAbsolute(resourceUri + '..');
 
       const loader = new qx.util.DynamicScriptLoader([
         sourcePath + 'node_modules/monaco-editor/' + version + '/vs/loader.js',
@@ -307,7 +318,13 @@ qx.Class.define('cv.ui.manager.editor.Source', {
         if (!this._configClient) {
           this._configClient = cv.io.rest.Client.getConfigClient();
           this._configClient.addListener('getSuccess', ev => {
-            this.setContent(JSON.stringify(ev.getData(), null, 2));
+            const content = ev.getData();
+            if (Object.prototype.hasOwnProperty.call(content, 'error')) {
+              // hidden config json could not be parsed, show the raw data
+              this.setContent(content.data);
+            } else {
+              this.setContent(JSON.stringify(ev.getData(), null, 2));
+            }
           });
           this._configClient.addListener('updateSuccess', this._onSaved, this);
         }
@@ -461,9 +478,8 @@ qx.Class.define('cv.ui.manager.editor.Source', {
       const parts = file.getName().split('.');
       const fileType = parts.length > 1 ? parts.pop() : 'txt';
       const typeExt = '.' + fileType;
-      return monaco.languages.getLanguages().some(function (lang) {
-        return lang.id === fileType || (lang.extensions && lang.extensions.indexOf(typeExt) >= 0);
-      });
+      const extRegex = cv.ui.manager.editor.Source.getExtensionRegex();
+      return extRegex.test(typeExt);
     },
 
     showErrors(path, errorList) {
@@ -524,6 +540,7 @@ qx.Class.define('cv.ui.manager.editor.Source', {
       let type = file.getName().split('.').pop();
       switch (type) {
         case 'svg':
+        case 'xsd':
           return 'xml';
         case 'js':
           return 'javascript';

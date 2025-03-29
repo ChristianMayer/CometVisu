@@ -43,7 +43,34 @@ qx.Class.define('cv.ui.structure.tile.widgets.Tile', {
       check: 'Boolean',
       init: false,
       apply: '_applyPopup'
+    },
+
+    outdated: {
+      check: 'Boolean',
+      init: false,
+      apply: '_applyOutdated'
+    },
+
+    checkOutdated: {
+      check: 'Boolean',
+      init: false,
+      apply: '_applyCheckOutdated'
+    },
+
+    outdatedMessage: {
+      check: 'String',
+      nullable: true,
+      apply: '_applyOutdatedMessage'
     }
+  },
+
+  /*
+  ***********************************************
+    EVENTS
+  ***********************************************
+  */
+  events: {
+    fullscreenChanged: 'qx.event.type.Data'
   },
 
   /*
@@ -52,8 +79,23 @@ qx.Class.define('cv.ui.structure.tile.widgets.Tile', {
   ***********************************************
   */
   members: {
+    _fullScreenMode: null,
+    _dateFormat: null,
+    _checkOutdatedTimerId: null,
+    _lastUpdate: null,
+    _maxAge: null,
+    _hideTimer: null,
+
+    _checkEnvironment() {
+      super._checkEnvironment();
+      const parent = this._element.parentElement;
+      let isWidget = parent.localName === 'cv-widget' || !!document.getElementById(parent.localName.substring(3));
+      this.setWidget(isWidget);
+    },
+
     _init() {
       super._init();
+      this._dateFormat = new qx.util.format.DateFormat(qx.locale.Date.getDateFormat('medium') + ' ' + qx.locale.Date.getTimeFormat('medium'));
       this._initPopupChild();
       if (this._element.hasAttribute('background-image')) {
         this.setBackgroundImage(this._element.getAttribute('background-image'));
@@ -61,6 +103,25 @@ qx.Class.define('cv.ui.structure.tile.widgets.Tile', {
       if (this._childPopup) {
         this._childPopup.addEventListener('closed', () => {
           this.resetPopup();
+        });
+      }
+      if (this._element.querySelector(':scope > label.title')) {
+        this._element.classList.add('has-title');
+      }
+
+      this._hideTimer = new qx.event.Timer(5000);
+      this._hideTimer.addListener('interval', () => {
+        const elem = this._element.querySelector(':scope > .outdated-value');
+        if (elem.style.display !== 'none') {
+          elem.style.display = 'none';
+        }
+        this._hideTimer.stop();
+      });
+
+      if (this._element.hasAttribute('href')) {
+        this._element.addEventListener('click', ev => {
+          window.open(this._element.getAttribute('href'), this._element.getAttribute('target') ?? '_blank');
+          ev.stopPropagation();
         });
       }
     },
@@ -81,22 +142,106 @@ qx.Class.define('cv.ui.structure.tile.widgets.Tile', {
       }
     },
 
+    _applyOutdated(value) {
+      let elem = this._element.querySelector(':scope > .outdated');
+      if (value) {
+        this._element.classList.add('outdated');
+        if (!elem) {
+          elem = document.createElement('div');
+          elem.classList.add('outdated');
+          elem.textContent = '!';
+          this._element.insertBefore(elem, this._element.firstElementChild);
+          // capture all clicks by stealing the initial event
+          elem.addEventListener('pointerdown', ev => {
+            ev.stopImmediatePropagation();
+          });
+          elem.addEventListener('click', ev => {
+            // show last updated value for 5 seconds
+            let valueElem = this._element.querySelector(':scope > .outdated-value');
+            if (!valueElem) {
+              valueElem = document.createElement('div');
+              valueElem.classList.add('outdated-value');
+              valueElem.textContent = this.getOutdatedMessage();
+              this._element.appendChild(valueElem);
+              this._element.insertBefore(valueElem, elem.nextElementSibling);
+              // capture all clicks by stealing the initial event
+              valueElem.addEventListener('pointerdown', ev => {
+                ev.stopImmediatePropagation();
+                valueElem.style.display = 'none';
+              });
+            } else {
+              valueElem.style.display = 'block';
+            }
+            this._hideTimer.start();
+          });
+        }
+        elem.style.display = 'block';
+      } else {
+        this._element.classList.remove('outdated');
+        if (elem) {
+          elem.style.display = 'none';
+        }
+      }
+    },
+
+    _applyOutdatedMessage(value) {
+      this._element.setAttribute('title', value);
+      let valueElem = this._element.querySelector(':scope > .outdated-value');
+      if (valueElem) {
+        valueElem.textContent = value;
+      }
+    },
+
+    _applyCheckOutdated(value) {
+      const timer = qx.util.TimerManager.getInstance();
+      if (value) {
+        this._checkOutdatedTimerId = timer.start(this.checkOutdated, 5000, this);
+      } else if (this._checkOutdatedTimerId) {
+        timer.stop(this._checkOutdatedTimerId);
+        this._checkOutdatedTimerId = null;
+      }
+    },
+
+    checkOutdated() {
+      if (this._lastUpdate instanceof Date) {
+        if (isNaN(this._lastUpdate.getTime())) {
+          this.setOutdated(true);
+          this.setOutdatedMessage(qx.locale.Manager.tr('Last update: unknown'));
+        } else {
+          const age = Math.floor((Date.now() - this._lastUpdate.getTime()) / 1000);
+          this.setOutdated(age > this._maxAge);
+          this.setOutdatedMessage(qx.locale.Manager.tr('Last update: %1', this._dateFormat.format(this._lastUpdate)));
+        }
+      } else if (this._lastUpdate === '-') {
+        this.setOutdated(true);
+        this.setOutdatedMessage(qx.locale.Manager.tr('Last update: unknown'));
+      } else {
+        this.error('last-update value must be a Date object, but is of type:', typeof this._lastUpdate, this._lastUpdate);
+        this.resetOutdatedMessage();
+      }
+    },
+
     open() {
       if (this._childPopup) {
         this._openPopupChild();
-      } else {
-        let closeButton = this._element.querySelector(':scope > button.close');
+      } else if (this._headerFooterParent) {
+        const target = this._headerFooterParent;
+        let closeButton = target.querySelector(':scope > button.close');
         if (!closeButton) {
           closeButton = document.createElement('button');
           closeButton.classList.add('close');
           const icon = document.createElement('i');
           icon.classList.add('ri-close-line');
           closeButton.appendChild(icon);
-          this._element.appendChild(closeButton);
+          target.appendChild(closeButton);
           closeButton.addEventListener('click', () => this.setPopup(false));
         }
         closeButton.style.display = 'block';
-        this._element.classList.add('popup');
+        target.classList.add('popup');
+        if (this._fullScreenMode) {
+          target.classList.add('fullscreen');
+          this.fireDataEvent('fullscreenChanged', true);
+        }
         this.registerModalPopup();
       }
     },
@@ -107,9 +252,13 @@ qx.Class.define('cv.ui.structure.tile.widgets.Tile', {
       }
       if (this._childPopup) {
         this._closePopupChild();
-      } else {
-        this._element.classList.remove('popup');
-        let closeButton = this._element.querySelector(':scope > button.close');
+      } else if (this._headerFooterParent) {
+        this._headerFooterParent.classList.remove('popup');
+        if (this._fullScreenMode) {
+          this._headerFooterParent.classList.remove('fullscreen');
+          this.fireDataEvent('fullscreenChanged', true);
+        }
+        let closeButton = this._headerFooterParent.querySelector(':scope > button.close');
         if (closeButton) {
           closeButton.style.display = 'none';
         }
@@ -118,6 +267,7 @@ qx.Class.define('cv.ui.structure.tile.widgets.Tile', {
       if (this._autoCloseTimer) {
         this._autoCloseTimer.stop();
       }
+      this.fireEvent('closed');
     },
 
     _applyPopup(value) {
@@ -141,6 +291,8 @@ qx.Class.define('cv.ui.structure.tile.widgets.Tile', {
             break;
 
           case 'popup':
+          case 'fullscreen-popup':
+            this._fullScreenMode = ev.detail.target === 'fullscreen-popup';
             if (ev.detail.addressValue) {
               // only open when the sent value equals the fixed value
               // noinspection EqualityComparisonWithCoercionJS
@@ -160,9 +312,28 @@ qx.Class.define('cv.ui.structure.tile.widgets.Tile', {
             }
             break;
 
+          case 'last-update':
+            this._maxAge = ev.detail.targetConfig && ev.detail.targetConfig.length > 0 ? parseInt(ev.detail.targetConfig.shift()) : Number.POSITIVE_INFINITY;
+            this._lastUpdate = ev.detail.state;
+            this.checkOutdated();
+            break;
+
           default:
             this.debug('unhandled address target', ev.detail.target);
         }
+      }
+    },
+
+    /*
+    ***********************************************
+      DESTRUCTOR
+    ***********************************************
+    */
+    destruct() {
+      this._disposeObjects('_dateFormat');
+      if (this._checkOutdatedTimerId) {
+        qx.util.TimerManager.getInstance().stop(this._checkOutdatedTimerId);
+        this._checkOutdatedTimerId = null;
       }
     }
   },

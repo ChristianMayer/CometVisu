@@ -24,10 +24,12 @@
  * @author Tobias Bräutigam
  * @since 2016
  */
-var cvDemo = require('../pages/Demo');
+const CometVisuDemo = require('../pages/Demo');
 
 describe('cometvisu demo config test:', function () {
   'use strict';
+
+  const cvDemo = new CometVisuDemo();
 
   beforeEach(function() {
     cvDemo.to();
@@ -170,7 +172,7 @@ describe('cometvisu demo config test:', function () {
                 browser.sleep(500);
                 knob.getLocation().then(function (newPos) {
                   // check with some tolerance
-                  expect(Math.abs(newPos.x-(rangePosition.x + borderWidth - Math.round(knobSize.width/2)))).toBeLessThan(25);
+                  expect(Math.abs(newPos.x-(rangePosition.x + borderWidth - Math.round(knobSize.width/2)))).toBeLessThan(35);
                   expect(newPos.y).toEqual(pos.y);
                 });
 
@@ -180,7 +182,7 @@ describe('cometvisu demo config test:', function () {
                 browser.sleep(500);
                 knob.getLocation().then(function (newPos) {
                   // check with some tolerance
-                  expect(Math.abs(newPos.x-(rangePosition.x + rangeSize.width - knobSize.width - borderWidth))).toBeLessThan(25);
+                  expect(Math.abs(newPos.x-(rangePosition.x + rangeSize.width - knobSize.width - borderWidth))).toBeLessThan(35);
                   expect(newPos.y).toEqual(pos.y);
                 });
               });

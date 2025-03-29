@@ -22,7 +22,8 @@ from io import open
 import json
 import re
 import hashlib
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import escape, unescape
+import html
 from settings import config, root_dir
 
 pure_xsd = etree.XMLSchema(etree.parse(path.join(root_dir, config.get("DEFAULT", "schema-file"))))
@@ -81,7 +82,8 @@ class WidgetExampleParser:
             self.counters[name] += 1
         try:
             # we need one surrounding element to prevent parse errors
-            xml = etree.fromstring("<root>%s</root>" % source)
+            parser = etree.XMLParser(strip_cdata=False)
+            xml = etree.fromstring("<root>%s</root>" % source, parser)
             single_widget = True
             for child in xml:
                 if etree.iselement(child):
@@ -118,20 +120,24 @@ class WidgetExampleParser:
         wrapper_attributes = ' class="%s"' % settings_node.get("wrapper-class") if settings_node is not None else ""
         wrapped_position = settings_node.get("wrapped-position").replace("'", "\"") if settings_node is not None and "wrapped-position" in settings_node.attrib else 'row="middle" column="middle"'
         for elem in config_example:
-            content = etree.tostring(elem, encoding='utf-8')
+            content = html.unescape(etree.tostring(elem, encoding='utf-8').decode('utf-8')).encode('utf-8')
             display = content
             if wrapper is not None:
-                example_content += bytes("<%s%s>" % (wrapper, wrapper_attributes), 'utf-8')
-                if wrapper == 'cv-tile':
+                if wrapper == 'cv-widget':
+                    example_content += bytes("<%s%s><cv-tile>" % (wrapper, wrapper_attributes), 'utf-8')
                     # center the widget
                     code = content.decode('utf-8')
                     pos = re.search("[ >]", code).start()
                     if pos > 0:
                         code = code[0:pos] + ' ' + wrapped_position + code[pos:]
                         content = bytes(code, 'utf-8')
+                else:
+                    example_content += bytes("<%s%s>" % (wrapper, wrapper_attributes), 'utf-8')
             example_content += content
             display_content += display
             if wrapper is not None:
+                if wrapper == 'cv-widget':
+                    example_content += bytes("</cv-tile>", 'utf-8')
                 example_content += bytes("</%s>" % wrapper, 'utf-8')
 
         if meta_node is not None:
@@ -144,6 +150,9 @@ class WidgetExampleParser:
             "screenshotDir": self.screenshot_dir,
             "fixtures": []
         }
+        # avoid writing default language to the cache file, all hashes would change and every screenshot would be regenerated
+        if config.get("DEFAULT", "language") != "de":
+            settings['language'] = config.get("DEFAULT", "language")
         design = "metal"
         structure = "pure"
 
@@ -175,8 +184,12 @@ class WidgetExampleParser:
                     shot['sleep'] = screenshot.get("sleep")
                 if screenshot.get("clickpath", None):
                     shot['clickPath'] = screenshot.get('clickpath')
+                if screenshot.get("goto-page", None):
+                    shot['gotoPage'] = screenshot.get('goto-page')
                 if screenshot.get("waitfor", None):
                     shot['waitFor'] = screenshot.get('waitfor')
+                if screenshot.get("hover-on", None):
+                    shot['hoverOn'] = screenshot.get('hover-on')
                 if screenshot.get("screen-width", None):
                     shot['screenWidth'] = int(screenshot.get('screen-width'))
                 if screenshot.get("margin"):
@@ -269,7 +282,7 @@ class WidgetExampleParser:
         try:
             etree.fromstring(visu_config, tile_parser if parsed['settings']['structure'] == "tile" else parser)
         except etree.XMLSyntaxError as e:
-            print(visu_config)
+            print("'%s'" % visu_config)
             print("ERROR: %s" % str(e))
             raise e
         parsed["settings"]["config"] = visu_config

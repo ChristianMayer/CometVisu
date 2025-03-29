@@ -154,15 +154,23 @@ qx.Class.define('cv.data.Model', {
       if (!data) {
         return;
       }
-      const addressList = this.__addressList[backendName];
-      if (addressList) {
-        Object.getOwnPropertyNames(data).forEach(function (address) {
-          if (Object.prototype.hasOwnProperty.call(addressList, address)) {
-            this.onUpdate(address, data[address], backendName);
-          }
-        }, this);
+      if (backendName === 'system') {
+        // system backend updates might happen before the system backend is initialized
+        // so we add all updates without checking if the address is registered yet.
+        for (const address in data) {
+          this.onUpdate(address, data[address], backendName);
+        }
       } else {
-        this.warn('no addresses registered for backend "' + backendName + '", skipping update');
+        const addressList = this.__addressList[backendName];
+        if (addressList) {
+          Object.getOwnPropertyNames(data).forEach(function(address) {
+            if (Object.prototype.hasOwnProperty.call(addressList, address)) {
+              this.onUpdate(address, data[address], backendName);
+            }
+          }, this);
+        } else {
+          this.debug('no addresses registered for backend "' + backendName + '", skipping update');
+        }
       }
     },
 
@@ -202,6 +210,11 @@ qx.Class.define('cv.data.Model', {
         this.__stateListeners[backendName][address] = [];
       }
       this.__stateListeners[backendName][address].push([callback, context]);
+
+      const backend = cv.io.BackendConnections.getClient(backendName);
+      if (backend && backend.isConnected()) {
+        backend.addSubscription(address);
+      }
     },
 
     /**
@@ -251,7 +264,9 @@ qx.Class.define('cv.data.Model', {
       }
       const list = this.__addressList[backendName];
       if (address in list) {
-        list[address].push(id);
+        if (!list[address].includes(id)) {
+          list[address].push(id);
+        }
       } else {
         list[address] = [id];
       }

@@ -59,13 +59,15 @@ qx.Class.define('cv.ui.structure.tile.elements.Mapping', {
      *
      * @param val {variant}
      * @param store {Map<string, variant>?} optional stored values from other addresses
+     * @param params {Array<variant>?} optional array of parameters for the mapping
+     * @param emptyWhenNoMatch {Boolean} return empty string when no mapped value is found, otherwise the value is returned (default)
      * @return {string|*|string}
      */
-    mapValue(val, store) {
+    mapValue(val, store, params, emptyWhenNoMatch = false) {
       if (Object.prototype.hasOwnProperty.call(this.__cache, val)) {
         return this.__cache[val];
       }
-      let mappedValue = '' + val;
+      let mappedValue = emptyWhenNoMatch ? '' : '' + val;
       const exactMatch = this._element.querySelector(':scope > entry[value="' + val + '"]');
 
       let type = this._element.hasAttribute('type') ? this._element.getAttribute('type') : 'string';
@@ -78,9 +80,9 @@ qx.Class.define('cv.ui.structure.tile.elements.Mapping', {
       if (formula) {
         if (!formula._formula) {
           let content = formula.textContent;
-          formula._formula = new Function('x', 'store', 'let y;' + content + '; return y;');
+          formula._formula = new Function('x', 'store', 'params', 'let y;' + content + '; return y;');
         }
-        mappedValue = this._convert(formula._formula(val, store), type);
+        mappedValue = this._convert(formula._formula(val, store, params), type);
         return mappedValue;
       }
       const entries = this._element.querySelectorAll(':scope > entry');

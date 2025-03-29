@@ -19,7 +19,7 @@ Der Button zeigt den aktuellen Zustand an und wechselt beim Klicken zwischen den
 
 .. widget-example::
 
-    <settings design="tile" selector="cv-button" wrap-in="cv-tile" wrapper-class="screenshots">
+    <settings design="tile" selector="cv-button" wrap-in="cv-widget"  wrapper-class="screenshots">
         <screenshot name="cv-button-off" margin="10 10 10 10">
             <data address="1/4/2">0</data>
             <caption>Ausgeschaltet</caption>
@@ -73,7 +73,7 @@ Auch dieser Modus wird über das <cv-address>-Element aktiviert. Genauer gesagt 
     <cv-address transform="DPT:1.001" mode="readwrite" value="1" on="down">1/4/2</cv-address>
     <cv-address transform="DPT:1.001" mode="readwrite" value="0" on="up">1/4/2</cv-address>
 
-Hier wird als beim Drücken (``on="down"``) der Wert ``1`` an ``1/4/2`` gesendet und beim Loslassen (``on="up"``) der Wert ``0``.
+Hier wird beim Drücken (``on="down"``) der Wert ``1`` an ``1/4/2`` und beim Loslassen (``on="up"``) der Wert ``0`` gesendet.
 
 
 Weitere Eigenschaften
@@ -88,7 +88,7 @@ ein ``class="round-button"`` hinzugefügt werden.
 .. widget-example::
     :hide-source: true
 
-    <settings design="tile" selector="cv-button" wrap-in="cv-tile" wrapper-class="screenshots">
+    <settings design="tile" selector="cv-button" wrap-in="cv-widget"  wrapper-class="screenshots">
         <screenshot name="cv-button-round-off" margin="10 10 10 10">
             <data address="1/4/2">0</data>
             <caption>Ausgeschaltet</caption>
@@ -131,7 +131,7 @@ eines gerade spielenden Liedes, eine Lautstärke oder den Helligkeitswert eines 
 
 .. widget-example::
 
-    <settings design="tile" selector="cv-button" wrap-in="cv-tile">
+    <settings design="tile" selector="cv-button" wrap-in="cv-widget" >
         <screenshot name="cv-button-progress" margin="10 10 10 10">
             <data address="1/4/1">75</data>
             <data address="1/4/2">1</data>
@@ -158,16 +158,16 @@ eines gerade spielenden Liedes, eine Lautstärke oder den Helligkeitswert eines 
 Zusätzliche Beschriftung
 ++++++++++++++++++++++++
 
-Optional kann der Button über ein ``text``-Attribut eine zusätzliche Beschriftung erhalten.
+Optional kann der Button über ein ``name``-Attribut eine zusätzliche Beschriftung erhalten.
 
 .. code-block:: xml
 
-    <cv-button class="round-button" mapping="light" styling="button" text="Licht">
+    <cv-button class="round-button" mapping="light" styling="button" name="Licht">
 
 .. widget-example::
     :hide-source: true
 
-    <settings design="tile" selector="cv-button" wrap-in="cv-tile">
+    <settings design="tile" selector="cv-button" wrap-in="cv-widget" >
         <screenshot name="cv-button-text" margin="10 10 24 10">
             <data address="1/4/1">75</data>
             <data address="1/4/2">1</data>

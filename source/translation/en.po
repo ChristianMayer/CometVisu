@@ -1020,7 +1020,7 @@ msgstr ""
 msgid "Edit text content"
 msgstr ""
 
-#: cv/ui/manager/MenuBar.js
+#: cv/ui/manager/Main.js
 msgid "About"
 msgstr ""
 
@@ -1246,4 +1246,145 @@ msgstr ""
 
 #: cv/ui/manager/control/FileController.js
 msgid "Folder \"%1\" has been renamed to \"%2\""
+msgstr ""
+
+#: cv/ui/manager/Main.js
+msgid "Server"
+msgstr ""
+
+#: cv/ui/manager/Main.js
+msgid "PHP version"
+msgstr ""
+
+#: cv/ui/manager/editor/Tree.js
+msgid "Disabling preview because the preview file could not be created."
+msgstr ""
+
+#. NO LONGER USED
+msgid "Hidden configuration has a syntax error and could not be loaded, you can try to fix the problem in the text editor. Do you want to open the file in the text Editor?"
+msgstr ""
+
+#: cv/ui/manager/editor/Config.js
+msgid "Hidden configuration error"
+msgstr ""
+
+#: cv/ui/manager/editor/Config.js
+msgid "Hidden configuration has a syntax error and could not be loaded, you can try to fix the problem in the text editor. Do you want to open the file in the text editor?"
+msgstr ""
+
+#: cv/ui/structure/tile/components/Chart.js
+msgid "previous"
+msgstr ""
+
+#: cv/ui/structure/tile/components/Chart.js
+msgid "next"
+msgstr ""
+
+#. NO LONGER USED
+msgid "h"
+msgstr ""
+
+#. NO LONGER USED
+msgid "d"
+msgstr ""
+
+#. NO LONGER USED
+msgid "w"
+msgstr ""
+
+#. NO LONGER USED
+msgid "m"
+msgstr ""
+
+#. NO LONGER USED
+msgid "y"
+msgstr ""
+
+#: cv/ui/structure/tile/components/Chart.js
+msgid "today"
+msgstr ""
+
+#: cv/ui/structure/tile/components/Chart.js
+msgid "yesterday"
+msgstr ""
+
+#. NO LONGER USED
+msgid "CW %s"
+msgstr ""
+
+#. CW = calendar week
+#: cv/ui/structure/tile/components/Chart.js
+msgid "CW %1"
+msgstr ""
+
+#: cv/ui/structure/tile/components/Chart.js
+msgid "Hour"
+msgstr ""
+
+#: cv/ui/structure/tile/components/Chart.js
+msgid "Day"
+msgstr ""
+
+#: cv/ui/structure/tile/components/Chart.js
+msgid "Week"
+msgstr ""
+
+#: cv/ui/structure/tile/components/Chart.js
+msgid "Month"
+msgstr ""
+
+#: cv/ui/structure/tile/components/Chart.js
+msgid "Year"
+msgstr ""
+
+#: cv/ui/structure/tile/widgets/Tile.js
+msgid "Last update: %1"
+msgstr ""
+
+#: cv/Application.js
+msgid "Disabling manager due to missing PHP support."
+msgstr ""
+
+#: cv/Application.js
+msgid "Your server does not support PHP."
+msgstr ""
+
+#: cv/Application.js
+msgid "Disabling manager due to failed PHP request querying the environment."
+msgstr ""
+
+#: cv/Application.js
+msgid "Failed PHP request querying the environment."
+msgstr ""
+
+#: cv/ui/structure/tile/widgets/Tile.js
+msgid "Last update: unknown"
+msgstr ""
+
+#: cv/core/notifications/actions/Confirm.js
+msgid "yes"
+msgstr ""
+
+#: cv/core/notifications/actions/Confirm.js
+msgid "no"
+msgstr ""
+
+#: cv/io/listmodel/RssLog.js
+msgid "Do you really want to delete this entry?"
+msgstr ""
+
+#: cv/TemplateEngine.js
+msgid "loadParts \"Structure\" failed"
+msgstr ""
+
+#: cv/TemplateEngine.js
+msgid "CometVisu startup error"
+msgstr ""
+
+#: cv/plugins/diagram/AbstractDiagram.js
+msgid "Bad MIME type. Expected \"application/json\", got \"%1\"."
+msgstr ""
+
+#: cv/plugins/diagram/AbstractDiagram.js
+msgid "Data is not in an array."
 msgstr ""

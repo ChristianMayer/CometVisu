@@ -27,7 +27,7 @@
  * - trigger HTTP requests
  */
 qx.Class.define('cv.io.System', {
-  extend: qx.core.Object,
+  extend: cv.io.AbstractClient,
   implement: cv.io.IClient,
 
   /*
@@ -38,27 +38,31 @@ qx.Class.define('cv.io.System', {
   construct() {
     super();
     this.addresses = [];
+    this.__persistedTargets = {
+      theme: '_applyTheme',
+      'client:id': '_applyCid'
+    };
     qx.event.message.Bus.subscribe('cv.ui.structure.tile.currentPage', this._onPageChange, this);
+
+    // set client id
+    this.setCid(cv.Config.clientID);
   },
+
   /*
   ***********************************************
-   PROPERTIES
+    PROPERTIES
   ***********************************************
   */
   properties: {
+    // system backend is always connected
     connected: {
-      check: 'Boolean',
-      init: true,
-      event: 'changeConnected'
+      refine: true,
+      init: true
     },
-
-    /**
-     * The server the client is currently speaking to
-     */
-    server: {
+    cid: {
       check: 'String',
       nullable: true,
-      event: 'changedServer'
+      apply: '_applyCid'
     }
   },
 
@@ -70,11 +74,19 @@ qx.Class.define('cv.io.System', {
   members: {
     backendName: 'system',
     addresses: null,
+    implementedAddresses: null,
+    __persistedTargets: null,
 
     _onPageChange(ev) {
       const page = ev.getData();
       const data = {};
       data['nav:current-page'] = page.getAttribute('id');
+      cv.data.Model.getInstance().updateFrom('system', data);
+    },
+
+    _applyCid(value) {
+      const data = {};
+      data['client:id'] = value;
       cv.data.Model.getInstance().updateFrom('system', data);
     },
 
@@ -92,6 +104,26 @@ qx.Class.define('cv.io.System', {
 
     subscribe(addresses, filters) {
       this.addresses = addresses ? addresses : [];
+      if (qx.core.Environment.get('html.storage.local')) {
+        let value;
+        for (const name in this.__persistedTargets) {
+          value = localStorage.getItem('system:' + name);
+          if (value) {
+            const func = this[this.__persistedTargets[name]];
+            if (typeof func === 'function') {
+              func(value);
+            } else {
+              this.error(name + 'is no function');
+            }
+          }
+        }
+      }
+    },
+
+    addSubscription(address) {
+      if (!this.addresses.includes(address)) {
+        this.addresses.push(address);
+      }
     },
 
     write(address, value, options) {
@@ -135,10 +167,7 @@ qx.Class.define('cv.io.System', {
               break;
           }
         } else if (target === 'theme') {
-          const theme = value;
-          document.documentElement.setAttribute('data-theme', theme);
-          const model = cv.data.Model.getInstance();
-          model.onUpdate('theme', theme, 'system');
+          this._applyTheme(value);
         } else if (target === 'http' || target === 'https') {
           // send HTTP request, ignore the answer
           if (parts.length >= 2 && parts[0] === 'proxy') {
@@ -149,11 +178,20 @@ qx.Class.define('cv.io.System', {
           }
           const xhr = new qx.io.request.Xhr(address);
           xhr.send();
-        } else if (target === 'state') {
+        } else if (target === 'state' || target === 'notification') {
           // just write the value to the states to update Listeners
           cv.data.Model.getInstance().onUpdate(address, value, 'system');
         }
+
+        if (qx.core.Environment.get('html.storage.local') && target in this.__persistedTargets) {
+          localStorage.setItem('system:' + target, value);
+        }
       }
+    },
+
+    _applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      cv.data.Model.getInstance().onUpdate('theme', theme, 'system');
     },
 
     restart() {},
@@ -176,6 +214,9 @@ qx.Class.define('cv.io.System', {
     },
 
     authorize(req) {},
+    canAuthorize() {
+      return false;
+    },
 
     terminate() {},
 
@@ -198,6 +239,27 @@ qx.Class.define('cv.io.System', {
     getProviderUrl(name) {
       return null;
     },
+
+    getProviderData(name, format) {
+      if (name === 'addresses') {
+        let data = null;
+        if (format === 'monaco') {
+          data = this.implementedAddresses.map(name => ({
+            label: name,
+            insertText: name,
+            kind: window.monaco.languages.CompletionItemKind.Value
+          }));
+        } else {
+          data = this.implementedAddresses.map(name => ({
+            label: name,
+            value: name
+          }));
+        }
+        return Promise.resolve(data);
+      }
+      return null;
+    },
+
     getProviderConvertFunction(name, format) {
       return null;
     }

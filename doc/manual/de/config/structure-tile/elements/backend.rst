@@ -31,11 +31,11 @@ Beispiel für die gleichzeitige Nutzung des KNXD und MQTT Backends:
 
 .. code:: xml
 
-    <cv-backend type="default" uri="/cgi-bin/l" />
+    <cv-backend type="knxd" uri="/cgi-bin/l" />
     <cv-backend type="mqtt" uri="ws://mqtt:9001/" />
 
-In diesem Fall nutzen alle ``cv-address``-Elemente ohne ``name``-Attribut (oder mit ``name="main"`` das default-Backend
-und alle ``cv-address``-Elemente ``name="mqtt"``.
+In diesem Fall nutzen alle ``cv-address``-Elemente ohne ``name``-Attribut (oder mit ``name="main"``) das default-Backend
+und alle ``cv-address``-Elemente mit ``name="mqtt"`` das MQTT backend.
 
 
 Verbindung zum KNXD / EIBD
@@ -43,7 +43,7 @@ Verbindung zum KNXD / EIBD
 
 .. code:: xml
 
-    <cv-backend type="default" />
+    <cv-backend type="knxd" />
 
 Der KNXD/EIBD benötigt bisher keine Zugangsdaten, daher werden die Attribute ``username`` und ``password`` hier nicht
 benötigt. Sofern man die CometVisu in dem offiziellen Docker Container benutzt muss man auch das ``uri``-Attribut
@@ -74,6 +74,15 @@ Für die Verbindung zu openHAB muss dann folgender Eintrag benutzt werden.
 .. code:: xml
 
     <cv-backend type="openhab" username="<access-token>" uri="/rest/" />
+
+.. HINT::
+
+    In openHAB angelegte Szenen (oder Regeln) können ebenfalls über das openHAB-Backend gestartet werden.
+    Dazu muss eine Adresse mit folgender Syntax benutzt werden: ``<cv-address mode="write" value="1">scene:123456abcd</cv-address>``.
+    Szenen / Regeln haben keinen Status, daher wird der Wert immer auf 1 gesetzt und es kann nur der Modus ``write`` benutzt werden.
+    Wichtig ist hier das Präfix ``scene:`` gefolgt von der ID der Szene / Regel.
+    Der Wert von ``value`` ist hierbei irrelevant, da er beim Aktivieren der Szene / Regel nicht gesendet, er dient lediglich dazu
+    in der UI eine kleine visuelle Rückmeldung zu geben, wenn die Szene geklickt wird.
 
 
 Verbindung zu einem MQTT-Broker
@@ -139,7 +148,7 @@ werden und der Browser-Cache umgangen wird.
 Seitennavigation
 ................
 
-Ebenso bietet diese Backend eine Alternative zu den aus der Pure-Struktur bekannten Pagejumps, mit denen eine
+Ebenso bietet dieses Backend eine Alternative zu den aus der Pure-Struktur bekannten Pagejumps, mit denen eine
 Navigation zu einer bestimmten Seite möglich ist.
 
 .. code-block:: xml

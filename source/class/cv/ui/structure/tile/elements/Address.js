@@ -34,10 +34,17 @@ qx.Class.define('cv.ui.structure.tile.elements.Address', {
   members: {
     __lastValue: null,
     __transformedValue: null,
+    _stateUpdateTarget: null,
+
+    getAddress() {
+      return this._element.textContent.trim();
+    },
+
 
     _init() {
       const element = this._element;
-      const address = element.textContent.trim();
+      this._stateUpdateTarget = element;
+      const address = this.getAddress();
       if (address) {
         const model = cv.data.Model.getInstance();
         const backendName = element.getAttribute('backend');
@@ -52,6 +59,13 @@ qx.Class.define('cv.ui.structure.tile.elements.Address', {
           }
           //add listener
           model.addUpdateListener(address, this.fireStateUpdate, this, backendName);
+
+          if (element.hasAttribute('target') && element.getAttribute('target').startsWith('last-update')) {
+            if (state === undefined) {
+              // notify tile that we have no value, so its outdated
+              this.fireStateUpdate(address, '-');
+            }
+          }
         }
         if (mode !== 'read') {
           // listen for sendState events
@@ -60,18 +74,32 @@ qx.Class.define('cv.ui.structure.tile.elements.Address', {
             if (Object.prototype.hasOwnProperty.call(ev.detail, 'value')) {
               value = ev.detail.value;
             }
-            if (element.hasAttribute('value')) {
-              // address has a fixed value that must be sent
-              value = element.getAttribute('value');
-            }
-            const allowDuplicates =
+            let allowDuplicates =
               ev.detail.source &&
               ev.detail.source instanceof cv.ui.structure.tile.components.Button &&
               (ev.detail.source.getType() === 'trigger' || ev.detail.source.getType() === 'push');
+
+            if (element.hasAttribute('value')) {
+              // address has a fixed value that must be sent
+              value = element.getAttribute('value');
+              allowDuplicates = true;
+            }
+
             if (value !== null) {
               const encoding = element.getAttribute('transform') || 'raw';
-              const encodedValue = cv.Transform.encodeBusAndRaw({ transform: encoding }, value);
+              const encodedValue = cv.Transform.encodeBusAndRaw({
+                transform: encoding,
+                selector: this._element.getAttribute('selector'),
+                ignoreError: this._element.getAttribute('ignore-error') === 'true',
+                variantInfo: this._element.getAttribute('variant'),
+                qos: (this._element.getAttribute('qos') || 0) | 0
+              }, value);
 
+              const client = cv.io.BackendConnections.getClient(backendName);
+              if (!client) {
+                this.error('no client found for backend', backendName);
+                return;
+              }
               // noinspection EqualityComparisonWithCoercionJS
               if (
                 allowDuplicates ||
@@ -83,8 +111,8 @@ qx.Class.define('cv.ui.structure.tile.elements.Address', {
                   this.debug(`send with delay of ${delay}ms`);
                   qx.event.Timer.once(
                     () => {
-                      cv.io.BackendConnections.getClient(backendName).write(
-                        element.textContent,
+                      client.write(
+                        address,
                         encodedValue.bus,
                         element
                       );
@@ -97,7 +125,7 @@ qx.Class.define('cv.ui.structure.tile.elements.Address', {
                     delay
                   );
                 } else {
-                  cv.io.BackendConnections.getClient(backendName).write(element.textContent, encodedValue.bus, element);
+                  client.write(address, encodedValue.bus, element);
 
                   if (!allowDuplicates) {
                     element.lastSentValue = encodedValue.raw;
@@ -118,7 +146,13 @@ qx.Class.define('cv.ui.structure.tile.elements.Address', {
     fireStateUpdate(address, state) {
       if (this.__lastValue !== state || this._element.getAttribute('send-mode') === 'always') {
         let transform = this._element.getAttribute('transform') || 'raw';
-        let transformedState = cv.Transform.decode({ transform: transform }, state);
+        let transformedState = cv.Transform.decode({
+          transform: transform,
+          selector: this._element.getAttribute('selector'),
+          ignoreError: this._element.getAttribute('ignore-error') === 'true',
+          variantInfo: this._element.getAttribute('variant'),
+          qos: (this._element.getAttribute('qos') || 0) | 0
+        }, state);
 
         let mapping = '';
         if (this._element.hasAttribute('mapping')) {
@@ -131,13 +165,16 @@ qx.Class.define('cv.ui.structure.tile.elements.Address', {
             transformedState instanceof Date ? transformedState.toLocaleString() : transformedState
           );
         }
+        let targetConfig = this._element.hasAttribute('target') ? this._element.getAttribute('target').split(':') : [];
+        const target = targetConfig.length > 0 ? targetConfig.shift() : '';
         const ev = new CustomEvent('stateUpdate', {
           bubbles: true,
           cancelable: true,
           detail: {
-            address: this._element.textContent.trim(),
+            address: this.getAddress(),
             state: transformedState,
-            target: this._element.getAttribute('target') || '',
+            target: target,
+            targetConfig: targetConfig,
             raw: state,
             mapping: mapping,
             addressValue: this._element.hasAttribute('value') ? this._element.getAttribute('value') : null,
@@ -148,13 +185,29 @@ qx.Class.define('cv.ui.structure.tile.elements.Address', {
 
         this.__transformedValue = transformedState;
         //console.log(ev.detail);
-        this._element.dispatchEvent(ev);
+        this._stateUpdateTarget.dispatchEvent(ev);
         this.__lastValue = state;
         // reset lastSentValue
         if (state !== this._element.lastSentValue) {
           this._element.lastSentValue = null;
         }
       }
+    },
+
+    /**
+     *
+     * @return {boolean} true if this is a read address
+     */
+    isRead() {
+      return this._element.getAttribute('mode') !== 'write';
+    },
+
+    /**
+     *
+     * @return {boolean} true if this is a write address
+     */
+    isWrite() {
+      return this._element.getAttribute('mode') !== 'read';
     },
 
     getValue() {

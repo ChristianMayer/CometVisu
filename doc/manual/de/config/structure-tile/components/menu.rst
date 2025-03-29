@@ -5,12 +5,17 @@ Menu
 
 .. api-doc:: cv.ui.structure.tile.components.Menu
 
+Diese Komponente erzeugt ein Navigationsmenü aus einem Modell. Momentan sind folgenden Modelle verfügbar:
 
-Beschreibung
-^^^^^^^^^^^^
+=============== =======================================
+``pages``       :ref:`tile-nav-menu`
+``menuItems``   :ref:`tile-item-menu`
+=============== =======================================
 
-Diese Komponente erzeugt ein Navigationsmenü aus einem Modell. Momentan ist nur die Seitenstruktur der Konfigurationsdatei
-als Modell verfügbar: ``pages``.
+.. _tile-nav-menu:
+
+Navigationsmenü aus Seitenstruktur
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. figure:: ../_static/tile-nav-menu.png
 
@@ -89,7 +94,7 @@ dock                    Nur im `<footer>` möglich, Aussehen wie bei "icons" jed
 .. widget-example::
 
       <settings design="tile" selector="nav">
-            <screenshot name="tile-nav-menu-dock" selector="cv-menu" waitfor="cv-menu > ul > li:first-child > a > i" margin="10 10 10 10">
+            <screenshot name="tile-nav-menu-dock" selector="cv-menu" waitfor="cv-menu > ul > li:first-child > .details" margin="10 10 10 10">
                 <caption>Dock Darstellungsart im Footer</caption>
             </screenshot>
         </settings>
@@ -113,7 +118,45 @@ dock                    Nur im `<footer>` möglich, Aussehen wie bei "icons" jed
             </nav>
         </footer>
 
+.. _tile-item-menu:
+
+Menü aus einzelnen Menü-Items
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Das folgende Beispiel fügt einer Kachel ein Menü mit zwei Einträgen hinzu. Dies bietet die Möglichkeit zusätzliche Einstellungen
+in einer Kachel unterzubringen. Der erste Menü-Eintrag öffnet ein Popup (welches in diesem Beispiel nicht weiter definiert ist),
+der zweite fungiert als Schalter.
+
+.. widget-example::
+
+        <settings design="tile">
+            <screenshot name="tile-context-menu-closed" selector="cv-widget">
+                <caption>Kachel mit Menü-Button</caption>
+            </screenshot>
+            <screenshot name="tile-context-menu-open" selector="cv-widget" margin="0 50 0 0" clickpath="cv-menu" waitfor="cv-menu.open > ul.context-menu">
+                <caption>Menü geöffnet</caption>
+            </screenshot>
+        </settings>
+        <cv-widget>
+            <cv-tile>
+                <cv-menu model="menuItems">
+                    <cv-menu-item name="Favoriten" action="popup" icon="ri-star-line">
+                        <cv-popup title="Favoriten" modal="true"></cv-popup>
+                    </cv-menu-item>
+                    <cv-menu-item name="Stumm" action="toggleState" icon="ri-volume-mute-line">
+                        <cv-address transform="DPT:1.001" mode="readwrite">1/4/0</cv-address>
+                    </cv-menu-item>
+                </cv-menu>
+            </cv-tile>
+        </cv-widget>
+
+
 Erlaubte Attribute
 ^^^^^^^^^^^^^^^^^^
 
 .. parameter-information:: cv-menu tile
+
+Erlaubte Kind-Elemente und deren Attribute
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. elements-information:: cv-menu tile

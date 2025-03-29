@@ -18,7 +18,7 @@
  */
 
 /**
- * Main settings that an be accessed from anywhere inside the Application
+ * Main settings that can be accessed from anywhere inside the Application
  */
 qx.Class.define('cv.Config', {
   type: 'static',
@@ -108,6 +108,11 @@ qx.Class.define('cv.Config', {
      */
     clientDesign: '',
     /**
+     * The (optional) ID of this client instance
+     * @type {String|null}
+     */
+    clientID: null,
+    /**
      * Maturity level
      * @type {var}
      */
@@ -178,18 +183,25 @@ qx.Class.define('cv.Config', {
     lazyLoading: false,
 
     /**
+     * Timeout till when all structure parts should be loaded. Only very slow
+     * systems need to increase this value.
+     * @type {number}
+     */
+    timeoutStructureLoad: 2000,
+
+    /**
      * Defines which structure is supported by which designs
      */
     designStructureMap: {
       pure: [
-        'alaska',
-        'alaska_slim',
+        // broken: 'alaska',
+        // broken: 'alaska_slim',
         'discreet',
         'discreet_sand',
         'discreet_slim',
         'metal',
         'pitchblack',
-        'planet',
+        // broken: 'planet',
         'pure'
       ],
 
@@ -227,6 +239,67 @@ qx.Class.define('cv.Config', {
     useServiceWorker: false,
 
     enableServiceWorkerCache: true,
+
+    defaultManifest: {
+      'short_name': 'CometVisu',
+      'name': 'CometVisu',
+      'start_url': 'index.html',
+      'theme_color': '#000',
+      'background_color': '#000',
+      'icons': [
+        {
+          'src': 'resource/icons/comet_webapp_icon_android_36.png',
+          'sizes': '36x36',
+          'type': 'image/png',
+          'density': '0.75',
+          'purpose': 'any'
+        },
+        {
+          'src': 'resource/icons/comet_webapp_icon_android_48.png',
+          'sizes': '48x48',
+          'type': 'image/png',
+          'density': '1.0',
+          'purpose': 'any'
+        },
+        {
+          'src': 'resource/icons/comet_webapp_icon_android_72.png',
+          'sizes': '72x72',
+          'type': 'image/png',
+          'density': '1.5',
+          'purpose': 'any'
+        },
+        {
+          'src': 'resource/icons/comet_webapp_icon_android_96.png',
+          'sizes': '96x96',
+          'type': 'image/png',
+          'density': '2.0',
+          'purpose': 'any'
+        },
+        {
+          'src': 'resource/icons/comet_webapp_icon_android_144.png',
+          'sizes': '144x144',
+          'type': 'image/png',
+          'density': '3.0',
+          'purpose': 'any'
+        },
+        {
+          'src': 'resource/icons/comet_webapp_icon_android_192.png',
+          'sizes': '192x192',
+          'type': 'image/png',
+          'density': '4.0',
+          'purpose': 'any'
+        },
+        {
+          'src': 'resource/icons/comet_webapp_icon_android_512.png',
+          'sizes': '512x512',
+          'type': 'image/png',
+          'density': '4.0',
+          'purpose': 'any'
+        }
+      ],
+      'display': 'standalone',
+      'orientation': 'any'
+    },
 
     /**
      * Get the structure that is related to this design
@@ -296,6 +369,10 @@ qx.Class.define('cv.Config', {
   defer(statics) {
     const req = qx.util.Uri.parseUri(window.location.href);
 
+    if (req.queryKey.timeoutStructureLoad) {
+      cv.Config.timeoutStructureLoad = parseInt(req.queryKey.timeoutStructureLoad, 10);
+    }
+
     if (req.queryKey.enableQueue) {
       cv.Config.enableAddressQueue = true;
     }
@@ -308,6 +385,10 @@ qx.Class.define('cv.Config', {
       cv.Config.URL = { backend: req.queryKey.backend };
     } else {
       cv.Config.URL = { backend: undefined };
+    }
+
+    if (req.queryKey.clientID) {
+      cv.Config.clientID = req.queryKey.clientID;
     }
 
     if (req.queryKey.design) {
@@ -323,13 +404,11 @@ qx.Class.define('cv.Config', {
         cv.Config.sentryEnabled = true;
         // generate unique transactionId and set as Sentry tag
         cv.Config.transactionId = Math.random().toString(36).substr(2, 9);
-        Sentry.configureScope(function (scope) {
-          scope.setTag('transaction_id', cv.Config.transactionId);
-          scope.setTag('build.date', cv.Version.DATE);
-          scope.setTag('build.branch', cv.Version.BRANCH);
-          Object.keys(cv.Version.TAGS).forEach(function (tag) {
-            scope.setTag(tag, cv.Version.TAGS[tag]);
-          });
+        Sentry.setTag('transaction_id', cv.Config.transactionId);
+        Sentry.setTag('build.date', cv.Version.DATE);
+        Sentry.setTag('build.branch', cv.Version.BRANCH);
+        Object.keys(cv.Version.TAGS).forEach(function (tag) {
+          Sentry.setTag(tag, cv.Version.TAGS[tag]);
         });
       }
     }

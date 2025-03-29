@@ -177,11 +177,9 @@ qx.Class.define('cv.ui.Popup', {
 
             qx.dom.Element.insertBegin(this.__elementMap.icon, this.__elementMap.content);
           } else {
-            const use = this.__elementMap.icon.querySelector('use');
-            const currentIconPath = use.getAttribute('xlink:href');
-            if (!currentIconPath.endsWith('#kuf-' + attributes.icon)) {
-              const parts = currentIconPath.split('#');
-              use.setAttribute('xlink:href', parts[0] + '#kuf-' + attributes.icon);
+            const i = this.__elementMap.icon.querySelector('i');
+            if (!i.classList.contains('knxuf-' + attributes.icon)) {
+              i.classList.add('knxuf-' + attributes.icon);
             }
           }
         } else {
@@ -198,6 +196,15 @@ qx.Class.define('cv.ui.Popup', {
         } else {
           this.destroyElement('progress');
         }
+      } else if (attributes.iframe) {
+        if (!this.__elementMap.iframe) {
+          this.__elementMap.iframe = qx.dom.Element.create('iframe', {
+            width: '100%',
+            height: '100%'
+          });
+          ret_val.appendChild(this.__elementMap.iframe);
+        }
+        this.__elementMap.iframe.setAttribute('src', attributes.iframe);
       }
 
       if (attributes.actions && Object.getOwnPropertyNames(attributes.actions).length > 0) {
@@ -234,9 +241,9 @@ qx.Class.define('cv.ui.Popup', {
 
             if (actionButton) {
               actionButton.$$handler &&
-                actionButton.$$handler.addListener('close', () => {
-                  this.close();
-                });
+              actionButton.$$handler.addListener('close', () => {
+                this.close();
+              });
               target.appendChild(actionButton);
             }
           }, this);
@@ -350,6 +357,13 @@ qx.Class.define('cv.ui.Popup', {
         this.__elementMap[name].parentNode.removeChild(this.__elementMap[name]);
         delete this.__elementMap[name];
       }
+    },
+
+    getElement(name) {
+      if (this.__elementMap[name]) {
+        return this.__elementMap[name];
+      }
+      return null;
     },
 
     /**

@@ -23,8 +23,7 @@
  * @asset(demo/*)
  * @asset(designs/*)
  * @asset(icons/*)
- * @asset(sentry/bundle.min.js)
- * @asset(sentry/bundle.tracing.min.js)
+ * @asset(sentry/*)
  * @asset(test/*)
  *
  * @require(qx.bom.Html,cv.ui.PopupHandler)
@@ -61,6 +60,31 @@ qx.Class.define('cv.Application', {
     } else {
       window.showConfigErrors = this.showConfigErrors.bind(this);
     }
+
+    // check HTTP server by requesting a small file
+    const xhr = new qx.io.request.Xhr('version');
+    xhr.set({ method: 'GET'});
+
+    const check = e => {
+      const req = e.getTarget();
+      let header = req.getResponseHeader('Server');
+      let isOpenHAB = false;
+      if (header) {
+        isOpenHAB = header.startsWith('Jetty');
+      } else {
+        header = req.getResponseHeader('X-CometVisu-Backend-Name');
+        isOpenHAB = header === 'openhab';
+      }
+      this.setServedByOpenhab(isOpenHAB);
+      this.setServerChecked(true);
+    };
+    xhr.addListenerOnce('success', check, this);
+    xhr.addListenerOnce('statusError', check, this);
+    xhr.addListenerOnce('error', e => {
+      const req = e.getTarget();
+      this.error('error checking server environment needed to setup the REST url', req.getStatus());
+    });
+    xhr.send();
   },
 
   /*
@@ -78,13 +102,22 @@ qx.Class.define('cv.Application', {
     _relResourcePath: null,
     _fullResourcePath: null,
 
+    /**
+     * Get the path to the resources.
+     * As it is a directory, it will end with a '/'.
+     * @param fullPath {boolean?} Get the full path when true
+     * @return {string}
+     */
     getRelativeResourcePath(fullPath) {
       if (!this._relResourcePath) {
         const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/');
         this._relResourcePath =
           qx.util.Uri.getAbsolute(qx.util.LibraryManager.getInstance().get('cv', 'resourceUri')).substring(
             baseUrl.length + 1
-          ) + '/';
+          );
+        if (!this._relResourcePath.endsWith('/')) {
+          this._relResourcePath += '/';
+        }
       }
       if (fullPath === true) {
         if (!this._fullResourcePath) {
@@ -103,11 +136,18 @@ qx.Class.define('cv.Application', {
      */
     createClient(...args) {
       let Client = cv.io.Client;
-      if (cv.Config.testMode === true || window.cvTestMode === true || args[0] === 'simulated') {
+      if (
+        cv.Config.testMode === true ||
+        window.cvTestMode === true ||
+        args[0] === 'simulated'
+      ) {
         Client = cv.io.Mockup;
       } else if (args[0] === 'openhab') {
         Client = cv.io.openhab.Rest;
-        if (cv.Config.getStructure() === 'structure-pure' && !cv.Config.pluginsToLoad.includes('plugin-openhab')) {
+        if (
+          cv.Config.getStructure() === 'structure-pure' &&
+          !cv.Config.pluginsToLoad.includes('plugin-openhab')
+        ) {
           cv.Config.configSettings.pluginsToLoad.push('plugin-openhab');
         }
         if (args[1] && args[1].endsWith('/cv/l/')) {
@@ -197,6 +237,33 @@ qx.Class.define('cv.Application', {
       init: false,
       event: 'changeMobile',
       apply: '_applyMobile'
+    },
+
+    serverChecked: {
+      check: 'Boolean',
+      init: false,
+      event: 'serverCheckedChanged'
+    },
+
+    servedByOpenhab: {
+      check: 'Boolean',
+      init: false
+    },
+
+    serverHasPhpSupport: {
+      check: 'Boolean',
+      init: false,
+      event: 'serverHasPhpSupportChanged'
+    },
+
+    serverPhpVersion: {
+      check: 'String',
+      nullable: true
+    },
+
+    server: {
+      check: 'String',
+      nullable: true
     }
   },
 
@@ -237,6 +304,10 @@ qx.Class.define('cv.Application', {
       }
     },
 
+    isReady() {
+      return this.__appReady;
+    },
+
     _applyManagerChecked(value) {
       if (value && cv.Config.loadManager) {
         this.showManager(cv.Config.managerOptions.action, cv.Config.managerOptions.data);
@@ -249,7 +320,11 @@ qx.Class.define('cv.Application', {
      */
     main() {
       cv.ConfigCache.init();
-      this._checkBackend();
+      if (this.isServerChecked()) {
+        this._checkBackend();
+      } else {
+        this.addListenerOnce('serverCheckedChanged', this._checkBackend, this);
+      }
       qx.event.GlobalError.setErrorHandler(this.__globalErrorHandler, this);
       if (qx.core.Environment.get('qx.debug')) {
         if (typeof replayLog !== 'undefined' && replayLog) {
@@ -272,7 +347,7 @@ qx.Class.define('cv.Application', {
         '-----------------------------------------------------------\n' +
         ' ©2010-' +
         new Date().getFullYear() +
-        ' Christian Mayer and the CometVisu contributers.\n' +
+        ' Christian Mayer and the CometVisu contributors.\n' +
         ' Version: ' +
         cv.Version.VERSION +
         '\n';
@@ -299,9 +374,6 @@ qx.Class.define('cv.Application', {
       // Call super class
       super.main();
       this.block(true);
-
-      // run svg4everybody to support SVG sprites in older browsers
-      svg4everybody();
 
       // support native logging capabilities, e.g. Firebug for Firefox
       //noinspection BadExpressionStatementJS,JSHint
@@ -684,19 +756,19 @@ qx.Class.define('cv.Application', {
         // load empty HTML structure
         body.innerHTML = cv.Application.structureController.getHtmlStructure();
       }
+
+      cv.Application.structureController.updateSentryScope();
     },
 
     /**
      * Internal initialization method
      */
     async __init() {
-      qx.event.Registration.addListener(
-        window,
-        'unload',
-        function () {
+      window.addEventListener(
+        'pagehide',
+        () => {
           cv.io.Client.stopAll();
-        },
-        this
+        }
       );
 
       qx.bom.Lifecycle.onReady(async () => {
@@ -763,7 +835,7 @@ qx.Class.define('cv.Application', {
           cv.report.Record.logCache();
           cv.Config.cacheUsed = true;
           cv.Config.lazyLoading = true;
-          cv.io.BackendConnections.initBackendClient();
+          cv.io.BackendConnections.initBackendClients();
 
           // load part for structure
           const structure = cv.Config.getStructure();
@@ -782,9 +854,14 @@ qx.Class.define('cv.Application', {
             // we have to replace the cached design scripts styles to load
             const styles = [];
             cv.Config.configSettings.stylesToLoad.forEach(function (style) {
-              styles.push(
-                style.replace('designs/' + cv.Config.configSettings.clientDesign, 'designs/' + cv.Config.clientDesign)
-              );
+              if (typeof style === 'string') {
+                styles.push(
+                  style.replace('designs/' + cv.Config.configSettings.clientDesign, 'designs/' + cv.Config.clientDesign)
+                );
+              } else if (typeof style === 'object' && style.uri) {
+                style.uri = style.uri.replace('designs/' + cv.Config.configSettings.clientDesign, 'designs/' + cv.Config.clientDesign);
+                styles.push(style);
+              }
             }, this);
             this.loadStyles(styles);
 
@@ -899,7 +976,9 @@ qx.Class.define('cv.Application', {
             // a real path
             standalonePlugins.push(plugin);
           } else {
-            standalonePlugins.push(path + '/plugins/' + plugin.replace('plugin-', '') + '/index.js');
+            standalonePlugins.push(
+              path + 'plugins/' + plugin.replace('plugin-', '') + '/index.js'
+            );
           }
         });
         // load part plugins
@@ -998,63 +1077,107 @@ qx.Class.define('cv.Application', {
     _checkBackend() {
       if (cv.Config.testMode === true) {
         this.setManagerChecked(true);
+        this.setServerHasPhpSupport(true);
       } else {
-        const url = cv.io.rest.Client.getBaseUrl().split('/').slice(0, -1).join('/') + '/environment.php';
+        const isOpenHab = this.isServedByOpenhab();
+        const url = isOpenHab ? cv.io.rest.Client.getBaseUrl() + '/environment'
+          : cv.io.rest.Client.getBaseUrl().split('/').slice(0, -1).join('/') + '/environment.php';
         const xhr = new qx.io.request.Xhr(url);
         xhr.set({
           method: 'GET',
           accept: 'application/json'
         });
+        const failedCheck = (errorText, disableReason) => {
+          this.setServerHasPhpSupport(false);
+          this.error(errorText);
+
+          this.setManagerDisabled(true);
+          this.setManagerDisabledReason(disableReason);
+          this.setManagerChecked(true);
+        };
 
         xhr.addListenerOnce('success', e => {
           const req = e.getTarget();
           const env = req.getResponse();
-          const serverVersionId = env.PHP_VERSION_ID;
-          const orParts = env.required_php_version.split('||').map(e => e.trim());
-          const passed = orParts.map(orConstraint => {
-            const andParts = orConstraint.split(/(\s+|&{2})/).map(e => e.trim());
-            // pass when no failed andPart has been found
-            return !andParts.some(constraint => this.__constraintFails(serverVersionId, constraint));
-          });
-          // one of the OR constraints need to pass
-          const enable = passed.some(res => res === true);
-          if (enable) {
-            this.info('Manager available for PHP version', env.phpversion);
+          if (typeof env !== 'object') {
+            if (typeof env === 'string' && env.startsWith('<?php')) {
+              // no php support
+              failedCheck(
+                qx.locale.Manager.tr('Disabling manager due to missing PHP support.'),
+                qx.locale.Manager.tr('Your server does not support PHP.')
+              );
+            } else {
+              // generic php error
+              failedCheck(
+                qx.locale.Manager.tr('Disabling manager due to failed PHP request querying the environment.'),
+                qx.locale.Manager.tr('Failed PHP request querying the environment.')
+              );
+            }
           } else {
-            this.error(
-              'Disabling manager due to PHP version mismatch. Installed:',
-              env.phpversion,
-              'required:',
-              env.required_php_version
-            );
+            // is this is served by native openHAB server, we do not have native PHP support, only the basic
+            // rest api is available, but nothing else that needs PHP (like some plugin backend code)
+            this.setServerHasPhpSupport(!isOpenHab);
 
-            this.setManagerDisabled(true);
-            this.setManagerDisabledReason(
-              qx.locale.Manager.tr(
-                'Your system does not provide the required PHP version for the manager. Installed: %1, required: %2',
+            this.setServerPhpVersion(env.phpversion);
+            this.setServer(env.SERVER_SOFTWARE);
+            if (Object.prototype.hasOwnProperty.call(env, 'requiresAuth')) {
+              cv.io.rest.Client.AUTH_REQUIRED = env.requiresAuth === true;
+            }
+
+            const serverVersionId = env.PHP_VERSION_ID;
+            const orParts = env.required_php_version
+              .split('||')
+              .map(e => e.trim());
+            const passed = orParts.map(orConstraint => {
+              const andParts = orConstraint
+                .split(/(\s+|&{2})/)
+                .map(e => e.trim());
+              // pass when no failed andPart has been found
+              return !andParts.some(constraint =>
+                this.__constraintFails(serverVersionId, constraint)
+              );
+            });
+            // one of the OR constraints need to pass
+            const enable = passed.some(res => res === true);
+            if (enable) {
+              this.info('Manager available for PHP version', env.phpversion);
+            } else {
+              this.error(
+                'Disabling manager due to PHP version mismatch. Installed:',
                 env.phpversion,
+                'required:',
                 env.required_php_version
-              )
-            );
-          }
-          this.setManagerChecked(true);
+              );
 
-          if (window.Sentry) {
-            Sentry.configureScope(function (scope) {
+              this.setManagerDisabled(true);
+              this.setManagerDisabledReason(
+                qx.locale.Manager.tr(
+                  'Your system does not provide the required PHP version for the manager. Installed: %1, required: %2',
+                  env.phpversion,
+                  env.required_php_version
+                )
+              );
+            }
+            this.setManagerChecked(true);
+
+            if (window.Sentry) {
               if ('server_release' in env) {
-                scope.setTag('server.release', env.server_release);
+                Sentry.setTag('server.release', env.server_release);
               }
               if ('server_branch' in env) {
-                scope.setTag('server.branch', env.server_branch);
+                Sentry.setTag('server.branch', env.server_branch);
               }
               if ('server_id' in env) {
-                scope.setTag('server.id', env.server_id);
+                Sentry.setTag('server.id', env.server_id);
               }
-            });
+            }
           }
         });
         xhr.addListener('statusError', e => {
-          this.setManagerChecked(true);
+          failedCheck(
+            qx.locale.Manager.tr('Disabling manager due to failed PHP request querying the environment.'),
+            qx.locale.Manager.tr('Failed PHP request querying the environment.')
+          );
         });
         xhr.send();
       }
@@ -1062,9 +1185,9 @@ qx.Class.define('cv.Application', {
 
     close() {
       this.setActive(false);
-      const client = cv.io.BackendConnections.getClient();
-      if (client) {
-        client.terminate();
+      const clients = cv.io.BackendConnections.getClients();
+      for (const name in clients) {
+        clients[name].terminate();
       }
     },
 

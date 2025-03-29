@@ -286,6 +286,7 @@ qx.Class.define('cv.ui.structure.pure.Roundbar', {
   members: {
     __animator: undefined,
     __indicatorDOMElement: null,
+    __postponedUpdates: undefined,
 
     // overridden
     _getInnerDomString() {
@@ -504,76 +505,19 @@ qx.Class.define('cv.ui.structure.pure.Roundbar', {
 
           switch (label.orientation) {
             case 3: // roundstart
-              path = [
-                'M',
-                x,
-                y,
-                'A',
-                label.radius,
-                label.radius,
-                0,
-                0,
-                cw,
-                -x,
-                -y,
-                'A',
-                label.radius,
-                label.radius,
-                0,
-                0,
-                cw,
-                x,
-                y
-              ].join(' ');
+              path = [ 'M', x, y, 'A', label.radius, label.radius, 0, 0, cw, -x, -y,
+                'A', label.radius, label.radius, 0, 0, cw, x, y ].join(' ');
               break;
 
             case 4: // roundmiddle
-              path = [
-                'M',
-                -x,
-                -y,
-                'A',
-                label.radius,
-                label.radius,
-                0,
-                0,
-                cw,
-                x,
-                y,
-                'A',
-                label.radius,
-                label.radius,
-                0,
-                0,
-                cw,
-                -x,
-                -y
-              ].join(' ');
+              path = [ 'M', -x, -y, 'A', label.radius, label.radius, 0, 0, cw, x, y,
+                'A', label.radius, label.radius, 0, 0, cw, -x, -y ].join(' ');
               align = ' startOffset="50%" text-anchor="middle"';
               break;
 
             case 5: // roundend
-              path = [
-                'M',
-                x,
-                y,
-                'A',
-                label.radius,
-                label.radius,
-                0,
-                0,
-                cw,
-                -x,
-                -y,
-                'A',
-                label.radius,
-                label.radius,
-                0,
-                0,
-                cw,
-                x,
-                y
-              ].join(' ');
+              path = [ 'M', x, y, 'A', label.radius, label.radius, 0, 0, cw, -x, -y,
+                'A', label.radius, label.radius, 0, 0, cw, x, y ].join(' ');
               align = ' startOffset="100%" text-anchor="end"';
               break;
           }
@@ -714,20 +658,41 @@ qx.Class.define('cv.ui.structure.pure.Roundbar', {
       return html;
     },
 
+    // overridden
+    _onDomReady() {
+      super._onDomReady();
+      if (this.__postponedUpdates !== undefined) {
+        this.__postponedUpdates.forEach(({address, data}) => {
+          this._update(address, data);
+        });
+        this.__postponedUpdates = undefined;
+      }
+    },
+
     /**
      * Updates the roundbar widget
      *
      * @param address {String} KNX-GA or openHAB item name
-     * @param data {var} incoming data
+     * @param data {*} incoming data
      */
     _update(address, data) {
       if (data === undefined || address === undefined) {
         return;
       }
       const self = this;
+      const domElement = this.getDomElement();
+      // only continue when the animators are already available, i.e. the
+      // DOM is set up - otherwise just store it for later
+      if (this.__animator === undefined || !domElement) {
+        if (this.__postponedUpdates === undefined) {
+          this.__postponedUpdates = [];
+        }
+        this.__postponedUpdates.push({address, data});
+        return;
+      }
       const value = cv.Transform.decode(this.getAddress()[address], data);
       const target = this.getTargetRatioValue();
-      const tspan = Array.from(this.getDomElement().getElementsByTagName('tspan'));
+      const tspan = Array.from(domElement.getElementsByTagName('tspan'));
 
       const valueFormat = this.applyFormat(address, value);
 

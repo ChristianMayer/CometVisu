@@ -26,6 +26,7 @@
  *
  * @author Tobias Bräutigam
  * @since 0.11.0 (2017)
+ * @ignore(Document)
  */
 qx.Class.define('cv.report.Replay', {
   extend: qx.core.Object,
@@ -147,6 +148,8 @@ qx.Class.define('cv.report.Replay', {
         return window;
       } else if (path === 'document') {
         return document;
+      } else if (path instanceof HTMLElement || path instanceof Document) {
+        return path;
       } else if (path.includes(':eq(')) {
         const re = /:eq\(([\d]+)\)/;
         let match = re.exec(path);
@@ -235,8 +238,9 @@ qx.Class.define('cv.report.Replay', {
               // workaround for mouse clicks on <a> elemente e.g. in the breadcrumb navigation
               // check for last pointerdown event, if id was on same element we have a click
               for (let i = this.__currentIndex - 1; i > 0; i--) {
-                if (this.__log[i].d.native.type === 'pointerdown') {
-                  if (this.__log[i].i === record.i) {
+                const entry = this.__log[i];
+                if (entry.c === 'user' && entry.d.native.type === 'pointerdown') {
+                  if (entry.i === record.i) {
                     // same element
                     target.click();
                   }
@@ -285,22 +289,34 @@ qx.Class.define('cv.report.Replay', {
     },
 
     __dispatchBackendRecord(record) {
-      const client = this.__getClient();
+      let client = this.__getDefaultClient();
+      if (record.o && record.o.name) {
+        client = cv.io.BackendConnections.getClient(record.o.name);
+      }
       switch (record.i) {
+        case 'connected':
+          client.setConnected(record.d);
+          break;
+
         case 'read':
           if (client instanceof cv.io.openhab.Rest) {
             client.handleMessage(record.d);
+          } else if (client instanceof cv.io.mqtt.Client) {
+            client.update(record.d);
           } else if (client.getCurrentTransport() instanceof cv.io.transport.Sse) {
             client.getCurrentTransport().handleMessage({ data: record.d });
           } else {
             this.error('long-polling transport should not record \'backend\' log events. Skip replaying');
           }
           break;
+
         default:
-          if (client[record.i]) {
-            client[record.i].apply(client, record.d);
+          if (typeof client[record.i] === 'function') {
+            client[record.i](record.d);
           } else if (client instanceof cv.io.openhab.Rest) {
             this.error('unhandled rest backend record of type ' + record.i);
+          } else if (client instanceof cv.io.mqtt.Client) {
+            client.update(record.d);
           } else if (client.getCurrentTransport() instanceof cv.io.transport.Sse) {
             client.getCurrentTransport().dispatchTopicMessage(record.i, record.d);
           } else {
@@ -310,7 +326,7 @@ qx.Class.define('cv.report.Replay', {
       }
     },
 
-    __getClient() {
+    __getDefaultClient() {
       if (!this.__client) {
         this.__client = cv.io.BackendConnections.getClient();
       }

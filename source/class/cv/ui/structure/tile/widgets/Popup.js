@@ -42,6 +42,8 @@ qx.Class.define('cv.ui.structure.tile.widgets.Popup', {
    ******************************************************
    */
   members: {
+    _closeButton: null,
+
     _init() {
       super._init();
       const popup = this._element;
@@ -53,7 +55,20 @@ qx.Class.define('cv.ui.structure.tile.widgets.Popup', {
         icon.classList.add('ri-close-line');
         this._closeButton.appendChild(icon);
         popup.insertBefore(this._closeButton, popup.firstChild);
-        this._closeButton.addEventListener('click', () => this.close());
+        this._closeButton.addEventListener('click', ev => {
+          ev.stopPropagation();
+          this.close();
+        });
+      }
+      popup.addEventListener('close', ev => {
+        this.close();
+      });
+      if (popup.hasAttribute('title')) {
+        const header = document.createElement('header');
+        popup.insertBefore(header, popup.firstChild);
+        const title = document.createElement('h2');
+        title.textContent = popup.getAttribute('title');
+        header.appendChild(title);
       }
       if (popup.hasAttribute('auto-close-timeout')) {
         const timeoutSeconds = parseInt(popup.getAttribute('auto-close-timeout'));
@@ -110,7 +125,13 @@ qx.Class.define('cv.ui.structure.tile.widgets.Popup', {
       if (!super.onStateUpdate(ev)) {
         switch (ev.detail.target) {
           case 'open':
-            if (ev.detail.state) {
+            if (ev.detail.addressValue) {
+              // only open when the sent value equals the fixed value
+              // noinspection EqualityComparisonWithCoercionJS
+              if (ev.detail.addressValue == ev.detail.state) {
+                this.open();
+              }
+            } else if (ev.detail.state) {
               this.open();
             }
             break;

@@ -27,17 +27,18 @@
  *
  * The basic structure is a set of pages that contain a list of tiles.
  * Each tile contains a grid of 3 rows and 3 columns. The components can be added to a cell of that grid
- * but also can spread over more then one cell by using row-/column spanning.
+ * but also can spread over more than one cell by using row-/column spanning.
  *
  * This structure provides some tiles with a pre-defined content, e.g. a <cv-switch> which
  * contains of a button in the middle of the tile and a primary- and secondary label in the third row.
  *
- * Those pre-defined tiles are provided by a <template> (@see https://developer.mozilla.org/de/docs/Web/HTML/Element/template}
+ * Those pre-defined tiles are provided by a <template> (@see https://developer.mozilla.org/de/docs/Web/HTML/Element/template)
  * User are able to define own templates for re-usable tiles if they need one that this structure does not provide.
  *
  * @asset(structures/tile/*)
  * @author Tobias Bräutigam
  * @since 2022
+ * @ignore(IntersectionObserver)
  */
 qx.Class.define('cv.ui.structure.tile.Controller', {
   extend: qx.core.Object,
@@ -56,6 +57,7 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
       qx.util.ResourceManager.getInstance().toUri('designs/tile-globals.scss').replace('.scss', '.css') +
         (cv.Config.forceReload === true ? '?' + Date.now() : '')
     );
+    qx.locale.Manager.getInstance().addListener('changeLocale', this._onChangeLocale, this);
   },
 
   /*
@@ -68,6 +70,9 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
     PREFIX: 'cv-',
     __MAP: {},
     __I: {},
+
+    MAPPING_PARAM_REGEX: /^(.+)\(([^)]+)\)$/,
+
     register(webComponentName, qxClass) {
       this.__MAP[webComponentName] = qxClass;
     },
@@ -106,6 +111,12 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
     namespace: {
       check: 'String',
       init: ''
+    },
+
+    scrolled: {
+      check: 'Boolean',
+      init: false,
+      apply: '_applyScrolled'
     }
   },
 
@@ -118,6 +129,7 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
     __HTML_STRUCT: null,
     __mappings: null,
     __stylings: null,
+    _templateWidgets: null,
 
     getHtmlStructure() {
       return this.__HTML_STRUCT;
@@ -148,7 +160,7 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
       if (!pageId) {
         return;
       }
-      const page = document.querySelector('#' + pageId);
+      const page = document.querySelector('cv-page#' + pageId);
       if (page) {
         if (!page.classList.contains('active')) {
           for (let oldPage of document.querySelectorAll('cv-page.active')) {
@@ -158,7 +170,7 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
             oldPage.classList.remove('sub-active');
           }
           page.classList.add('active');
-          // mark parent pages that there is a active subpage
+          // mark parent pages that there is an active subpage
           let parentElement = page.parentElement;
           while (parentElement && parentElement.nodeName.toLowerCase() !== 'main') {
             if (parentElement.nodeName.toLowerCase() === 'cv-page') {
@@ -184,14 +196,14 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
 
     // not needed, backend parse/init themselves
     parseBackendSettings(xml) {
-      if (xml.querySelectorAll('cv-backend').length === 0) {
+/*      if (xml.querySelectorAll('cv-backend').length === 0) {
         // no backends defined, use the default one;
         const client = cv.io.BackendConnections.initBackendClient();
         client.login(true, cv.Config.configSettings.credentials, () => {
           this.debug('logged in');
-          cv.io.BackendConnections.startInitialRequest();
+          cv.io.BackendConnections.startInitialRequests();
         });
-      }
+      }*/
       return false;
     },
 
@@ -204,7 +216,7 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
       const settings = cv.Config.configSettings;
       const configElement = config.documentElement;
       settings.bindClickToWidget = configElement.getAttribute('bind_click_to_widget') === 'true';
-      this.translate(config);
+      this.translate(config, true);
 
       if (!cv.Config.cacheUsed) {
         const templates = qx.util.ResourceManager.getInstance().toUri('structures/tile/templates.xml');
@@ -239,12 +251,57 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
           }
           document.body.classList.remove('loading-structure');
           this.debug('finalizing');
+          this.observeVisibility();
           qx.event.message.Bus.dispatchByName('setup.dom.append');
           this.debug('pages created');
           this.__gotoStartPage();
           this.debug('setup.dom.finished');
           qx.event.message.Bus.dispatchByName('setup.dom.finished.before');
           cv.TemplateEngine.getInstance().setDomFinished(true);
+
+          if (qx.core.Environment.get('qx.debug')) {
+            cv.report.Replay.start();
+          }
+
+          const main = document.body.querySelector(':scope > main');
+          if (main) {
+            let shrinkHeight = -1;
+            let canAnimate = false;
+            main.addEventListener('scroll', () => {
+              // we need to know the space that we gain in height, when the shrinked elements are not shown
+              // and must not start the effect before we reach that threshold, otherwise
+              // main.scrollTop would go back to 0 because we have more height available and do not have to scroll+
+              // anymore, that would lead to an endless toggling this effect
+              // so long story short: avoid that applying this effect would lead to: main.scrollTop === 0
+              if (shrinkHeight < 0) {
+                shrinkHeight = 1;
+                let style;
+                for (const elem of document.body.querySelectorAll(':scope > header [hide-on-scroll="true"]')) {
+                  style = getComputedStyle(elem);
+                  if (!canAnimate) {
+                    // we need at least one element that has a defined height, to get a working animation
+                    canAnimate = !!elem.style.height;
+                  }
+                  shrinkHeight += parseInt(style.height) +
+                    parseInt(style.paddingTop) +
+                    parseInt(style.paddingBottom) +
+                    parseInt(style.marginTop) +
+                    parseInt(style.marginBottom);
+                }
+              }
+              if (!this.isScrolled() && main.scrollTop > shrinkHeight) {
+                this.setScrolled(true);
+                if (!canAnimate) {
+                  main.scrollTop -= shrinkHeight;
+                }
+              } else if (this.isScrolled() && main.scrollTop === 0) {
+                this.setScrolled(false);
+                shrinkHeight = -1;
+              }
+            });
+          }
+
+          this.enablePullToRefresh();
         });
         ajaxRequest.addListener('statusError', e => {
           const status = e.getTarget().getTransport().status;
@@ -258,21 +315,16 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
       }
     },
 
-    /**
-     * Registers customElements for all templates in the given xml that are direct children of a <templates structure="tile"> element
-     * @param xml {XMLDocument}
-     */
-    registerTemplates(xml) {
-      xml.querySelectorAll('templates[structure=\'tile\'] > template').forEach(template => {
-        customElements.define(
-          cv.ui.structure.tile.Controller.PREFIX + template.getAttribute('id'),
-          class extends TemplatedElement {
-            constructor() {
-              super(template.getAttribute('id'));
-            }
-          }
-        );
-      });
+    _applyScrolled(value) {
+      if (value) {
+        for (const elem of document.body.querySelectorAll(':scope > header [hide-on-scroll="true"]')) {
+          elem.classList.add('scrolled');
+        }
+      } else {
+        for (const elem of document.body.querySelectorAll(':scope > header [hide-on-scroll="true"]')) {
+          elem.classList.remove('scrolled');
+        }
+      }
     },
 
     /**
@@ -311,41 +363,75 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
      * Generate the UI code from the config file
      * @param config {Object} loaded config file usually an XMLDocument but other structures might use different formats
      */
-    createUI(config) {},
+    createUI(config) {
+    },
 
-    translate(doc) {
-      for (const attr of ['name', 'label']) {
+    observeVisibility() {
+      // find all pages with an iframe with attribute "data-src" and observe its parent page
+      const observer = new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && entry.target.hasAttribute('data-src')) {
+            entry.target.setAttribute('src', entry.target.getAttribute('data-src'));
+            entry.target.removeAttribute('data-src');
+            observer.unobserve(entry.target);
+          }
+        }, {
+          root: document.querySelector('body > main')
+        });
+      });
+      for (const iframe of document.querySelectorAll('iframe[data-src], img[data-src]')) {
+        observer.observe(iframe);
+      }
+    },
+
+    translate(doc, rememberKeys, useKeys) {
+      let language = qx.locale.Manager.getInstance().getLanguage();
+      let match = /locale=([a-z]{2,3})/.exec(document.location.search);
+      if (match) {
+        language = match[1];
+      }
+      if (rememberKeys) {
+        this._trKeys = {};
+      }
+      for (const attr of ['name', 'label', 'title', 'format']) {
         for (const trNameElement of doc.querySelectorAll(`*[${attr}^="tr("]`)) {
           const match = /^tr\('([^']+)'\)$/.exec(trNameElement.getAttribute(attr));
 
-          if (!match) {
+          if (!match && !useKeys) {
             this.warn('attribute content no valid translation string', trNameElement.getAttribute(attr));
 
             continue;
           }
-          const key = match[1];
+          const key = useKeys ? this._trKeys[trNameElement.getAttribute(attr)] : match[1];
           const translation = doc.querySelector(
-            `cv-translations > language[name="${qx.locale.Manager.getInstance().getLanguage()}"] > tr[key='${key}']`
+            `cv-translations > language[name="${language}"] > tr[key='${key}']`
           );
 
           if (translation) {
+            if (rememberKeys) {
+              this._trKeys[translation.textContent.trim()] = key;
+            }
             trNameElement.setAttribute(attr, translation.textContent.trim());
           } else {
             trNameElement.setAttribute(attr, key);
-            this.warn(`[${qx.locale.Manager.getInstance().getLanguage()}] no translation found for: "${key}"`);
+            this.warn(`[${language}] no translation found for: "${key}"`);
           }
         }
       }
       for (const trTextElement of doc.querySelectorAll('*[tr="true"]')) {
-        const key = trTextElement.textContent.trim();
+        const key = useKeys ? this._trKeys[trTextElement.textContent.trim()] : trTextElement.textContent.trim();
         const translation = doc.querySelector(
-          `cv-translations > language[name="${qx.locale.Manager.getInstance().getLanguage()}"] > tr[key='${key}']`
+          `cv-translations > language[name="${language}"] > tr[key='${key}']`
         );
 
         if (translation) {
+          if (rememberKeys) {
+            this._trKeys[translation.textContent.trim()] = key;
+          }
           trTextElement.textContent = translation.textContent.trim();
         } else {
-          this.warn(`[${qx.locale.Manager.getInstance().getLanguage()}] no translation found for: "${key}"`);
+          trTextElement.textContent = key;
+          this.warn(`[${language}] no translation found for: "${key}"`);
         }
       }
     },
@@ -395,8 +481,19 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
     },
 
     mapValue(mappingName, value, store) {
+      let match;
+      let params = [];
+      if ((match = cv.ui.structure.tile.Controller.MAPPING_PARAM_REGEX.exec(mappingName)) !== null) {
+        // this mapping name contains a parameter
+        try {
+          params = JSON.parse(`[${match[2].replaceAll('\'', '"')}]`);
+        } catch (e) {
+          this.error('error parsing parameters from ' + mappingName);
+        }
+        mappingName = match[1];
+      }
       if (this.__mappings && Object.prototype.hasOwnProperty.call(this.__mappings, mappingName)) {
-        return this.__mappings[mappingName].mapValue(value, store);
+        return this.__mappings[mappingName].mapValue(value, store, params);
       }
       return value;
     },
@@ -422,7 +519,96 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
       if (this.__stylings && Object.prototype.hasOwnProperty.call(this.__stylings, stylingName)) {
         return this.__stylings[stylingName].mapValue(value, store);
       }
-      return value;
+      return '';
+    },
+
+    // for compatibility with pure controller
+    parseLabel() {
+      return '';
+    },
+
+    _onChangeLocale() {
+      this.translate(document.body, false, true);
+    },
+
+    enablePullToRefresh() {
+      let startY = 0;
+      let scrollContainer;
+
+      const refreshSpinner = document.createElement('div');
+      refreshSpinner.classList.add('pull-to-refresh');
+      const icon = document.createElement('i');
+      icon.classList.add('ri-loader-4-fill');
+      refreshSpinner.append(icon);
+      document.body.append(refreshSpinner);
+      const eventSource = document;
+
+      const onMove = ev => {
+        const touchY = ev.touches[0].clientY;
+        const touchDiff = touchY - startY;
+        if (touchDiff > 60 && scrollContainer.scrollTop === 0) {
+          refreshSpinner.classList.add('visible');
+        } else {
+          refreshSpinner.classList.remove('visible');
+        }
+      };
+      const onEnd = () => {
+        finish();
+        if (refreshSpinner.classList.contains('visible')) {
+          refreshSpinner.classList.remove('visible');
+          location.reload();
+        }
+      };
+      const finish = () => {
+        eventSource.removeEventListener('touchmove', onMove);
+        eventSource.removeEventListener('touchend', onEnd);
+        eventSource.removeEventListener('touchcancel', finish);
+      };
+      eventSource.addEventListener('touchstart', ev => {
+        startY = ev.touches[0].clientY;
+        scrollContainer = document.querySelector('main');
+        if (scrollContainer && scrollContainer.scrollTop === 0) {
+          eventSource.addEventListener('touchmove', onMove);
+          eventSource.addEventListener('touchend', onEnd);
+          eventSource.addEventListener('touchcancel', finish);
+        }
+      });
+    },
+
+    isTemplateWidget(name) {
+      return this._templateWidgets.includes(name);
+    },
+
+    /**
+     * Registers customElements for all templates in the given xml that are direct children of a <templates structure="tile"> element
+     * @param xml {XMLDocument}
+     */
+    registerTemplates(xml) {
+      if (this._templateWidgets === null) {
+        this._templateWidgets = [];
+      }
+      for (const template of xml.querySelectorAll('templates[structure=\'tile\'] > template')) {
+        const className = qx.lang.String.firstUp(qx.lang.String.camelCase(template.getAttribute('id')));
+        let Clazz = qx.Class.getByName(`cv.ui.structure.tile.widgets.${className}`);
+        if (!Clazz) {
+          Clazz = cv.ui.structure.tile.widgets.TemplateWidget;
+        }
+        customElements.define(
+          cv.ui.structure.tile.Controller.PREFIX + template.getAttribute('id'),
+          class extends TemplatedElement {
+            constructor() {
+              super(template.getAttribute('id'), Clazz);
+            }
+          }
+        );
+        this._templateWidgets.push(cv.ui.structure.tile.Controller.PREFIX + template.getAttribute('id'));
+      }
+    },
+    updateSentryScope() {
+      if (cv.Config.sentryEnabled && window.Sentry) {
+        Sentry.setTag('ui.structure', 'tile');
+        Sentry.setTag('ui.design', cv.Config.getDesign());
+      }
     }
   },
 
@@ -431,23 +617,95 @@ qx.Class.define('cv.ui.structure.tile.Controller', {
       // do not apply ourselves automatically in test mode
       cv.Application.structureController = statics.getInstance();
     }
+  },
+
+  /*
+  ***********************************************
+    DESTRUCTOR
+  ***********************************************
+  */
+  destruct() {
+    qx.locale.Manager.getInstance().removeListener('changeLocale', this._onChangeLocale, this);
   }
 });
 
-class TemplatedElement extends HTMLElement {
-  constructor(templateId) {
+
+/* eslint-disable-next-line no-redeclare */
+class QxConnector extends HTMLElement {
+  constructor(QxClass) {
     super();
+    if (QxClass) {
+      if (qx.Class.isSubClassOf(QxClass, cv.ui.structure.tile.elements.AbstractCustomElement)) {
+        this._instance = new QxClass(this);
+      } else {
+        throw Error(QxClass + ' must be a subclass of cv.ui.structure.tile.elements.AbstractCustomElement');
+      }
+    }
+    if (this.hasAttribute('colspan')) {
+      this.classList.add('colspan-' + this.getAttribute('colspan'));
+    }
+    if (this.hasAttribute('rowspan')) {
+      this.classList.add('rowspan-' + this.getAttribute('rowspan'));
+    }
+  }
+
+  getInstance() {
+    return this._instance;
+  }
+
+  connectedCallback() {
+    if (this._instance) {
+      this._instance.setConnected(true);
+    }
+  }
+
+  disconnectedCallback() {
+    if (this._instance) {
+      this._instance.setConnected(false);
+    }
+  }
+
+  attributeChangedCallback(name, oldValue, newValue) {
+    name = qx.lang.String.camelCase(name);
+    if (this._instance && qx.Class.hasProperty(this._instance.constructor, name)) {
+      this._instance.set(name, newValue);
+    }
+  }
+}
+
+window.QxConnector = QxConnector;
+
+class TemplatedElement extends QxConnector {
+  constructor(templateId, QxClass) {
+    super(QxClass);
+    const renderAttributeName = 'data-cv-rendered';
+    if (this.getAttribute(renderAttributeName) === 'true') {
+      // do not render the template twice
+      return;
+    }
     const controller = cv.ui.structure.tile.Controller.getInstance();
     let template = document.getElementById(templateId);
     if (template) {
       const slotAttributes = ['name', 'replaces', 'parent-scope'];
       const content = template.content.cloneNode(true);
+
+      // copy all attributes, except 'id' of the template itself to the widget
+      for (const name of template.getAttributeNames()) {
+        if (name !== 'id' && !this.hasAttribute(name)) {
+          this.setAttribute(name, template.getAttribute(name));
+        }
+      }
+
       // move slots into template
       for (let slot of content.querySelectorAll('slot')) {
         const slotName = slot.getAttribute('name');
         const replacementSelector = slot.hasAttribute('replaces') ? slot.getAttribute('replaces') : '';
         const slotParentScope = slot.hasAttribute('parent-scope') ? parseInt(slot.getAttribute('parent-scope')) : 0;
         let slotContents = this.querySelectorAll(`[slot='${slotName}']`);
+        if (slotContents.length === 0 && slotName === 'default') {
+          // add all elements that have no slot to this default slot
+          slotContents = this.querySelectorAll(':scope > *:not([slot])');
+        }
         const attrs = {};
         for (let i = 0, l = slot.attributes.length; i < l; i++) {
           if (!slotAttributes.includes(slot.attributes[i].name)) {
@@ -479,8 +737,6 @@ class TemplatedElement extends HTMLElement {
             });
           }
         } else {
-          qx.log.Logger.debug(controller, '[' + templateId + '] no content for slot', slotName, ' removing');
-
           let parentNode = slot.parentNode;
           if (slotParentScope > 0) {
             // got slotParentScope elements up and remove that one
@@ -494,8 +750,9 @@ class TemplatedElement extends HTMLElement {
             }
           } else {
             slot.remove();
-            if (parentNode.children.length === 0) {
+            if (parentNode.children.length === 0 && slotParentScope >= 0) {
               // also remove slots parent when it has no content
+              // can be obeyed by setting parent-scope="-1"
               parentNode.remove();
             }
           }
@@ -503,36 +760,46 @@ class TemplatedElement extends HTMLElement {
       }
       // transfer attribute slots
       const attributes = this.getAttributeNames();
-      attributes.forEach(name => {
+      for (const name of attributes) {
         let value = this.getAttribute(name);
-        const targets = content.querySelectorAll('[slot-' + name + ']');
+        const slotAttributeName = `slot-${name}`;
+        const targets = content.querySelectorAll(`[${slotAttributeName}]`);
         let targetName = name;
-        // allow names like percent-mapping that should also be mapped to a certain elements 'mapping' attribute
-        if (name.endsWith('-mapping')) {
-          targetName = 'mapping';
-        } else if (name.endsWith('-styling')) {
-          targetName = 'styling';
-        } else if (name.endsWith('-format')) {
-          targetName = 'format';
-        }
-        targets.forEach(target => {
-          if (targetName !== name && target.hasAttribute('slot-' + name)) {
-            target.setAttribute(name, value || target.getAttribute('slot-' + name));
 
-            target.removeAttribute('slot-' + name);
-          } else {
-            target.setAttribute(targetName, value || target.getAttribute('slot-' + targetName));
-
-            target.removeAttribute('slot-' + targetName);
+        for (const target of targets) {
+          if (target.hasAttribute(slotAttributeName)) {
+            const targetValue = target.getAttribute(slotAttributeName);
+            if (targetValue.startsWith(':')) {
+              // this template slot-attribute contains some configuration
+              for (const entry of targetValue.substring(1).split(',')) {
+                const [key, val] = entry.split('=');
+                switch (key) {
+                  case 'target':
+                    targetName = val;
+                    break;
+                  case 'value':
+                    // not needed here
+                    break;
+                  default:
+                    qx.log.Logger.error(this, 'unhandled slot-attribute configuration key', key);
+                    break;
+                }
+              }
+            }
           }
-        });
+
+          target.setAttribute(targetName, value);
+          target.removeAttribute(slotAttributeName);
+        }
         if (targets.length > 0) {
           this.removeAttribute(name);
         }
-      });
-      content.querySelectorAll('*').forEach(elem => {
-        [...elem.attributes].forEach(attr => {
+      }
+
+      for (const elem of content.querySelectorAll('*')) {
+        for (const attr of [...elem.attributes]) {
           if (attr.name.startsWith('slot-')) {
+            let attrValue = attr.value;
             let targetName = attr.name.substring(5);
             // only e.g. map slot-progress-mapping to mapping if we have no slot-mapping attribute
             if (attr.name.endsWith('-mapping') && elem.hasAttribute('slot-mapping')) {
@@ -541,18 +808,38 @@ class TemplatedElement extends HTMLElement {
               targetName = 'styling';
             } else if (attr.name.endsWith('-format') && elem.hasAttribute('slot-format')) {
               targetName = 'format';
+            } else if (attr.value.startsWith(':')) {
+              attrValue = '';
+              // this template slot-attribute contains some configuration
+              const parts = attr.value.substring(1).split(',');
+              for (const entry of parts) {
+                const [key, val] = entry.split('=');
+                switch (key) {
+                  case 'target':
+                    targetName = val;
+                    break;
+                  case 'value':
+                    attrValue = val;
+                    break;
+                  default:
+                    qx.log.Logger.error(this, 'unhandled slot-attribute configuration key', key);
+                    break;
+                }
+              }
             }
-            if (attr.value) {
-              elem.setAttribute(targetName, attr.value);
+            if (attrValue) {
+              elem.setAttribute(targetName, attrValue);
             }
             elem.removeAttribute(attr.name);
           }
-        });
-      });
+        }
+      }
 
       // clear content
       this.innerHTML = '';
       this.appendChild(content);
+      this.classList.add('cv-widget');
+      this.setAttribute(renderAttributeName, 'true');
     } else {
       qx.log.Logger.error(controller, '[' + templateId + '] no template found for id', templateId);
     }

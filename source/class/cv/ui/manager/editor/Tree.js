@@ -174,7 +174,7 @@ qx.Class.define('cv.ui.manager.editor.Tree', {
         file = file.substring(3);
       }
       if (!Object.prototype.hasOwnProperty.call(this, file)) {
-        this._schemas[file] = cv.ui.manager.model.Schema.getInstance(file);
+        this._schemas[file] = await cv.ui.manager.model.Schema.getInstance(file);
       }
       return new Promise((resolve, reject) => {
         this._schemas[file].onLoaded(function () {
@@ -194,7 +194,18 @@ qx.Class.define('cv.ui.manager.editor.Tree', {
 
     _maintainPreviewVisibility() {
       const handlerOptions = this.getHandlerOptions();
-      this.setShowPreview(qx.bom.Viewport.getWidth() > 800 && (!handlerOptions || !handlerOptions.noPreview));
+      let enablePreview = qx.bom.Viewport.getWidth() > 800 && (!handlerOptions || !handlerOptions.noPreview);
+      if (enablePreview) {
+        const previewFile = this.__getPreviewFile();
+        if (!previewFile.isTemporary() && !previewFile.isWriteable()) {
+          // preview file already exists, but it is not writable
+          enablePreview = false;
+        } else if (previewFile.isTemporary() && !cv.ui.manager.model.FileItem.ROOT.isWriteable()) {
+          // parent folder is not writable and preview file does not exist
+          enablePreview = false;
+        }
+      }
+      this.setShowPreview(enablePreview);
     },
 
     _applyShowPreview(value) {
@@ -1865,24 +1876,42 @@ qx.Class.define('cv.ui.manager.editor.Tree', {
           }
         };
 
-        if (element.isTextNode() && element.getParent().getName() === 'status') {
-          const type = element.getParent().getAttribute('type');
-          if ((type === 'html' || type === 'xml') && element.getNode().nodeType === Node.TEXT_NODE) {
+        if (element.isTextNode()) {
+          let type = '';
+          const parent = element.getParent();
+          let convertToCData = false;
+          switch (parent.getName()) {
+            case 'status':
+              type = element.getParent().getAttribute('type');
+              convertToCData = (type === 'html' || type === 'xml');
+              break;
+
+            case 'style':
+              type = 'css';
+              convertToCData = true;
+              break;
+
+            case 'dataset':
+              if (parent.getAttribute('src').startsWith('flux://')) {
+                type = 'flux';
+              }
+              break;
+          }
+          if (convertToCData && element.getNode().nodeType === Node.TEXT_NODE) {
             element.convertTextNodeType(Node.CDATA_SECTION_NODE);
             const newNodeName = element.getNode().nodeName;
             formData[newNodeName] = formData[nodeName];
             delete formData[nodeName];
             nodeName = newNodeName;
           }
-          // Due to a bug that swallowed whitespaces in the monaco editor from time to time this is disabled for now
 
           // special handling for status content: check of source editor supports the type and use it instead of a plain TextArea
-          /*if (type && cv.ui.manager.editor.Source.SUPPORTED_FILES("test." + type)) {
-            formData[nodeName].type = "SourceEditor";
+          if (type && cv.ui.manager.editor.Source.SUPPORTED_FILES('test.' + type)) { // eslint-disable-line new-cap
+            formData[nodeName].type = 'SourceEditor';
             formData[nodeName].language = type;
             formData[nodeName].width = Math.min(qx.bom.Viewport.getWidth(), 800);
             delete formData[nodeName].placeholder;
-          }*/
+          }
         }
         this.__checkProvider(
           element.getParent().getName() + '@' + element.getName(),
@@ -2159,7 +2188,7 @@ qx.Class.define('cv.ui.manager.editor.Tree', {
         return false;
       });
       if (!file) {
-        file = new cv.ui.manager.model.FileItem('visu_config_previewtemp.xml', '/', this.getFile().getParent());
+        file = new cv.ui.manager.model.FileItem('visu_config_previewtemp.xml', '/', cv.ui.manager.model.FileItem.ROOT);
 
         file.setTemporary(true);
       }
@@ -2274,19 +2303,24 @@ qx.Class.define('cv.ui.manager.editor.Tree', {
               path: previewFile.getFullPath(),
               hash: 'ignore'
             },
-
             content,
-            () => {
-              qx.event.message.Bus.dispatchByName(previewFile.getBusTopic(), {
-                type: 'contentChanged',
-                file: previewFile,
-                data: content,
-                source: this
-              });
-
-              this.__modifiedPreviewElements.removeAll();
-              this.resetPreviewState();
-              previewFile.resetTemporary();
+            err => {
+              if (err) {
+                // disable preview, because the file could not be created
+                this.setShowPreview(false);
+                this.error(err);
+                cv.ui.manager.snackbar.Controller.error(this.tr('Disabling preview because the preview file could not be created.'));
+              } else {
+                qx.event.message.Bus.dispatchByName(previewFile.getBusTopic(), {
+                  type: 'contentChanged',
+                  file: previewFile,
+                  data: content,
+                  source: this
+                });
+                this.__modifiedPreviewElements.removeAll();
+                this.resetPreviewState();
+                previewFile.resetTemporary();
+              }
             },
             this
           );
@@ -2296,18 +2330,21 @@ qx.Class.define('cv.ui.manager.editor.Tree', {
               path: previewFile.getFullPath(),
               hash: 'ignore'
             },
-
             content,
-            () => {
-              qx.event.message.Bus.dispatchByName(previewFile.getBusTopic(), {
-                type: 'contentChanged',
-                file: previewFile,
-                data: content,
-                source: this
-              });
+            err => {
+              if (err) {
+                cv.ui.manager.snackbar.Controller.error(err);
+              } else {
+                qx.event.message.Bus.dispatchByName(previewFile.getBusTopic(), {
+                  type: 'contentChanged',
+                  file: previewFile,
+                  data: content,
+                  source: this
+                });
 
-              this.__modifiedPreviewElements.removeAll();
-              this.resetPreviewState();
+                this.__modifiedPreviewElements.removeAll();
+                this.resetPreviewState();
+              }
             },
             this
           );

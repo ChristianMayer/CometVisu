@@ -1,13 +1,11 @@
 Grundsätzlicher Aufbau
 ======================
 
-Wie der Name schon suggeriert setzt sich eine Visualisierung in der Tile-Struktur aus einzelnen Kacheln (engl. Tile)
-zusammen.
-
-Für häufig benötigte Dinge liefert die Tile-Struktur bereits Kacheln mit vor-definiertem Inhalt mit (im folgenden
-Widgets genannt). So enthält das Switch-Widget z.B. einen Button in der mittleren Zelle und zentrierten Text in der Zeile darunter.
-
-Eine Konfigurationsdatei folgt grundsätzlich folgendem Aufbau:
+Auf der obersten Ebene enthält eine Tile-Datei zunächst einen Meta-Bereich (``<cv-meta>``) in dem nicht sichtbare Einstellungen
+enthalten sind die für diese Konfigurationsdatei benötigt werden (z.B. Verbindungen zu Backends, das Laden von
+zusätzliche Dateien usw.).
+Der sichtbare Bereich gliedert sich in einen ``<header>``- (Kopfzeile) einen ``<main>``- (der eigentliche Inhalt)
+und einen ``<footer>``-Bereich (Fußzeile). Die Kopf- und Fußzeile sind optional und können weggelassen werden.
 
 .. code-block:: xml
 
@@ -25,6 +23,11 @@ Eine Konfigurationsdatei folgt grundsätzlich folgendem Aufbau:
             <!-- Optionaler Inhalt unten -->
         </footer>
     </config>
+
+Im ``<main>``-Bereich wird der Inhalt in Kacheln dargestellt (engl. Tile) die in verschiedenen Seiten (``<cv-page>``)
+angeordnet sind.
+Für häufig benötigte Dinge liefert die Tile-Struktur bereits Kacheln mit vor-definiertem Inhalt mit (im folgenden
+Widgets genannt). So enthält das Switch-Widget z.B. einen Button in der mittleren Zelle und zentrierten Text in der Zeile darunter.
 
 Meta-Bereich
 ------------
@@ -70,6 +73,8 @@ Dazu gehören z.B. die Verbindungen zu den :ref:`Backends <tile-element-backend>
     Mapping <elements/mapping>
     Styling <elements/styling>
     Loader <elements/loader>
+    CSS-Style <elements/style>
+    Status-Benachrichtigung <elements/state-notification>
 
 
 Navigation / Seitenstruktur
@@ -107,7 +112,7 @@ offenen Fenster oder der eingeschalteten Lichter, nutzen.
             <h1>Footer-Bereich</h1>
         </footer>
 
-Der ``<main>``-Bereich ist nicht optional und muss immer vorhanden sein
+Der ``<main>``-Bereich ist nicht optional und muss immer vorhanden sein.
 Innerhalb dieses Bereichs können beliebig viele :ref:`Pages <tile-component-page>` angegeben werden.
 Eine Page kann wiederum `Widgets`_, :ref:`Gruppen <tile-component-group>` und weitere Pages enthalten. Durch diese Verschachtelung
 kann man eine Navigationsstruktur festlegen. So kann man z.B. für jede Etage eine Page angeben, die wiederum
@@ -141,7 +146,6 @@ jedoch der Header oder Footer Bereich an).
         </nav>
     </header>
 
-
 .. widget-example::
     :hide-source: true
 
@@ -152,6 +156,42 @@ jedoch der Header oder Footer Bereich an).
             <nav>
                 <cv-menu model="pages"/>
             </nav>
+        </header>
+        <main>
+            <cv-page id="eg" name="Erdgeschoss">
+                <cv-page id="ez" name="Esszimmer" />
+                <cv-page id="wz" name="Wohnzimmer" />
+                <cv-page id="ku" name="Küche" />
+                <cv-page id="bad" name="Badezimmer" />
+            </cv-page>
+             <cv-page id="og" name="Obergeschoss">
+                <cv-page id="sz" name="Schlafzimmer" />
+                <cv-page id="kz1" name="Kinderzimmer 1" />
+                <cv-page id="kz2" name="Kinderzimmer 2" />
+                <cv-page id="badOg" name="Badezimmer" />
+            </cv-page>
+        </main>
+
+In den ``<header>/<footer>``-Bereichen kann zusätzlich noch ein Breadcrumb-Menü hinzugefügt werden mit ``<cv-breadcrumbs/>``.
+Damit kann man schnell zurück zu übergeordneten Seiten springen.
+
+.. code-block:: xml
+
+    <header>
+        <cv-breadcrumbs/>
+    </header>
+
+.. widget-example::
+    :hide-source: true
+
+        <settings design="tile" selector="cv-breadcrumbs">
+            <screenshot name="tile-nav-breadcrumb" goto-page="ku" margin="0 -800 0 0"/>
+        </settings>
+        <header>
+            <nav>
+                <cv-menu model="pages"/>
+            </nav>
+            <cv-breadcrumbs/>
         </header>
         <main>
             <cv-page id="eg" name="Erdgeschoss">
@@ -186,43 +226,103 @@ Ein Widget ist eine Kachel mit einer oder mehreren Komponenten mit der eine best
 Damit können übliche Anwendungsfälle innerhalb eines Smart-Homes abgedeckt werden, wie z.B. Lichtschalter (Switch)
 oder die Bedienung einer Rolllade (Shutter).
 
+.. table::
+    :widths: 30 70
+
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-switch-on.png              | :ref:`tile-switch`                                        |
+    |     :width: 150                                          | Einfacher Schalter, Taster oder Trigger                   |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-dimmer.png                 | :ref:`tile-dimmer`                                        |
+    |     :width: 150                                          | Schalter mit zusätzlichem Slider zur Einstellung eines    |
+    |                                                          | Prozentwerts.                                             |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-shutter.png                | :ref:`tile-shutter`                                       |
+    |     :width: 150                                          | Taster für hoch/runter/stop zur Bedienung einer Jalousie  |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-info.png                   | :ref:`tile-info`                                          |
+    |     :width: 150                                          | Darstellung eines Werts in verschiedenen Arten.           |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-status.png                 | :ref:`tile-status`                                        |
+    |     :width: 150                                          | Status Anzeige in halber Kachel-Höhe                      |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-small-status.png           | :ref:`tile-small-status`                                  |
+    |     :width: 60                                           | Status Anzeige in Button-Größe                            |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-status-chart.png           | :ref:`tile-status-chart`                                  |
+    |     :width: 150                                          | Status-Widget mit Chart im Hintergrund                    |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-rtc.png                    | :ref:`tile-rtc`                                           |
+    |     :width: 150                                          | Raumtemperatursteuerung mit Einstellungen für HVAC und    |
+    |                                                          | einer Solltemperatur                                      |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-media-player.png           | :ref:`tile-media-player`                                  |
+    |     :width: 150                                          | Steuerung eines Medien-Abspielers mit Start/Stop          |
+    |                                                          | vor & zurück und einer Lautstärkeregelung                 |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-widget-pair.png            | :ref:`tile-widget-pair`                                   |
+    |    :width: 150                                           | Ermöglicht es zwei Kacheln in halber Höhe darzustellen    |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-energy-full.png            | :ref:`tile-energy`                                        |
+    |    :width: 150                                           | Zeigt Energieflüsse innerhalb eines Hauses an             |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    | .. image:: widgets/_static/cv-link.png                   | :ref:`tile-link`                                          |
+    |    :width: 150                                           | Öffnet eine Webseite                                      |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    |                                                          | :ref:`tile-web`                                           |
+    |                                                          | Zeigt eine eingebettete Webseite an                       |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+    |                                                          | :ref:`tile-dynamic`                                       |
+    |                                                          | Blendet Inhalte der Visualisierung dynamisch ein          |
+    +----------------------------------------------------------+-----------------------------------------------------------+
+
 .. toctree::
     :maxdepth: 1
+    :hidden:
 
     Switch <widgets/switch>
     Dimmer <widgets/dimmer>
     Shutter <widgets/shutter>
     Info <widgets/info>
     Status <widgets/status>
+    Small-Status <widgets/small-status>
+    Status-Chart <widgets/status-chart>
     RTC <widgets/rtc>
     Media Player <widgets/media-player>
-    Tile-pair <widgets/tile-pair>
+    Widget-pair <widgets/widget-pair>
+    Energy <widgets/energy>
+    Link <widgets/link>
+    Web <widgets/web>
+    Dynamic <widgets/dynamic>
 
 Eigene Widgets definieren
 =========================
 
 Sofern die vorhandenen Widgets nicht ausreichen, kann man sich auch eigenen Widgets definieren. Die Definition
-eines neuen Widgets erfolgt in einer Kachel ``<cv-tile>``.
+eines neuen Widgets erfolgt in einem ``<cv-widget>``-Element. Dieses besteht aus dem eigentlichen Inhalts-Element
+``<cv-tile>`` und jeweils einem optionalen ``<header>``- und ``<footer>``-Element.
 Die Inhalte in den Kacheln sind in maximal 3 Zeilen mit jeweils 3 Spalten angeordnet, wobei hier ähnlich
 wie in Tabellen ein Inhaltselement mehrere Zeilen und / oder Spalten belegen kann.
 
 .. widget-example::
     :hide-source: true
 
-    <settings design="tile" selector="cv-tile">
+    <settings design="tile" selector="cv-widget">
         <screenshot name="tile-grid"/>
     </settings>
-    <cv-tile>
-        <p class="grid"/>
-        <p class="grid"/>
-        <p class="grid"/>
-        <p class="grid"/>
-        <p class="grid"/>
-        <p class="grid"/>
-        <p class="grid"/>
-        <p class="grid"/>
-        <p class="grid"/>
-    </cv-tile>
+    <cv-widget>
+        <cv-tile>
+            <p class="grid"/>
+            <p class="grid"/>
+            <p class="grid"/>
+            <p class="grid"/>
+            <p class="grid"/>
+            <p class="grid"/>
+            <p class="grid"/>
+            <p class="grid"/>
+            <p class="grid"/>
+        </cv-tile>
+    </cv-widget>
 
 Innerhalb der Zellen einer Kachel können nun die von der Tile-Struktur bereitgestellten :ref:`Komponenten <tile-components>` frei platziert werden.
 Beispiele für diese Komponenten sind z.B. einfacher Text, ein :ref:`Button <tile-component-button>`,
@@ -235,17 +335,19 @@ und ein Text angezeigt wird.
 
 .. code-block:: xml
 
-    <cv-tile>
-        <cv-row colspan="3" row="2">
-            <cv-value format="%d%%">
-                <cv-address transform="OH:number" mode="read" backend="si">Test_Value</cv-address>
-                <cv-round-progress class="value"/>
-            </cv-value>
-        </cv-row>
-        <cv-row colspan="3" row="last">
-            <label class="secondary">Circle Progress</label>
-        </cv-row>
-    </cv-tile>
+    <cv-widget>
+        <cv-tile>
+            <cv-row colspan="3" row="2">
+                <cv-value format="%d%%">
+                    <cv-address transform="OH:number" mode="read" backend="si">Test_Value</cv-address>
+                    <cv-round-progress class="value"/>
+                </cv-value>
+            </cv-row>
+            <cv-row colspan="3" row="last">
+                <label class="secondary">Circle Progress</label>
+            </cv-row>
+        </cv-tile>
+    </cv-widget>
 
 Diese Kachel-Konfiguration muss nun in ein Template übertragen werden. Dazu muss man sich zunächst eine Template-Datei
 anlegen. Das geht am besten über den :ref:`Manager <Manager>` indem man im Order "media" eine Datei mit Namen "my-templates.xml"
@@ -259,7 +361,8 @@ hinzu.
     </cv-meta>
 
 
-Diese Datei sollte dann folgenden Inhalt enthalten:
+In diese Datei kopiert man nun alles was zwischen ``<cv-widget>`` und ``</cv-widget>`` steht.
+Sie sollte dann folgenden Inhalt enthalten:
 
 .. code-block:: xml
 
@@ -301,9 +404,83 @@ Daraus ergibt sich folgender Code mit dem man das neu definierte Template-Widget
         </cv-meter>
     </custom>
 
-Die selbst definierte Template-Widgets dem offiziellen Schema der CometVisu-Konfigurationsdateien nicht bekannt sind,
+Da selbst definierte Template-Widgets dem offiziellen Schema der CometVisu-Konfigurationsdateien nicht bekannt sind,
 muss man diese in ein ``<custom>...</custom>`` Element packen, damit die Konfigurationsdatei nicht als ungültig erkannt
-wird.
+wird. Damit verliert man an dieser Stelle aber den Vorteil, dass dieser Teil der Konfigurationsdatei auf Gültigkeit
+geprüft werden kann. Sofern man darauf werden legt, kann auch eine Erweiterung des Schemas vorgenommen werden, in
+dem das eigene Widget eingetragen wird. Dazu muss die Datei "custom_visu_config.xsd" im "config/" Ordner vorhanden sein.
+Sofern sie nicht vorhanden ist, muss sie mit folgender Grundstruktur angelegt werden.
+
+.. code-block:: xml
+
+    <?xml version="1.0" encoding="UTF-8"?>
+    <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xml="http://www.w3.org/XML/1998/namespace">
+        <!-- uncomment the next line if you want to reference types from the main pure schema -->
+        <!-- <xsd:include schemaLocation="../visu_config.xsd"/> -->
+        <!-- uncomment the next line if you want to reference types from the main tile schema -->
+        <!-- <xsd:include schemaLocation="../visu_config_tile.xsd"/> -->
+        <xsd:group name="CustomWidgets">
+            <xsd:choice>
+                <!-- reference new widgets here, e.g.
+                    <xsd:element name="cv-music-player" type="cv-music-player" />
+                -->
+            </xsd:choice>
+        </xsd:group>
+        <!-- add definition for new widgets here -->
+        <!-- <xsd:complexType name="cv-music-player">...</xsd:complexType> -->
+    </xsd:schema>
+
+
+Das vollständige Beispiel für das ``<cv-meter>``-Widget sieht so aus.
+
+.. code-block:: xml
+
+    <?xml version="1.0" encoding="UTF-8"?>
+    <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xml="http://www.w3.org/XML/1998/namespace">
+        <xsd:include schemaLocation="../visu_config_tile.xsd"/>
+        <xsd:group name="CustomWidgets">
+            <xsd:choice>
+                <xsd:element name="cv-meter" type="cv-meter" />
+            </xsd:choice>
+        </xsd:group>
+        <xsd:complexType name="cv-meter">
+            <xsd:sequence>
+                <xsd:element name="span" minOccurs="0">
+                    <xsd:complexType>
+                        <xsd:simpleContent>
+                            <xsd:extension base="xsd:string">
+                                <xsd:attribute name="slot" use="required">
+                                    <xsd:simpleType>
+                                        <xsd:restriction base="xsd:string">
+                                            <xsd:enumeration value="label" />
+                                        </xsd:restriction>
+                                    </xsd:simpleType>
+                                </xsd:attribute>
+                            </xsd:extension>
+                        </xsd:simpleContent>
+                    </xsd:complexType>
+                </xsd:element>
+                <xsd:element name="cv-address" maxOccurs="unbounded">
+                    <xsd:complexType>
+                        <xsd:simpleContent>
+                            <xsd:extension base="address">
+                                <xsd:attribute name="slot" use="required">
+                                    <xsd:simpleType>
+                                        <xsd:restriction base="xsd:string">
+                                            <xsd:enumeration value="address" />
+                                        </xsd:restriction>
+                                    </xsd:simpleType>
+                                </xsd:attribute>
+                            </xsd:extension>
+                        </xsd:simpleContent>
+                    </xsd:complexType>
+                </xsd:element>
+            </xsd:sequence>
+            <xsd:attribute ref="format" />
+        </xsd:complexType>
+    </xsd:schema>
+
+Danach kann das ``<cv-meter>``-Widget ohne ``<custom>...</custom>`` benutzt werden und es wird auch auf Gültigkeit geprüft.
 
 .. _tile-components:
 
@@ -324,12 +501,22 @@ mehrere Komponenten in einer Kachel.
     Spinner <components/spinner>
     Slider <components/slider>
     List <components/list>
+    Chart <components/chart>
+    Color <components/color>
+    Power entity <components/power-entity>
+    Energy entity <components/energy-entity>
+    SVG round value <components/svg-round-value>
+    SVG text value <components/svg-text-value>
 
-..    Chart <components/chart>
 
+Sonstiges
+---------
+
+Weitere Elemente die keine eigenständige Komponenten sind aber in diesen benutzt werden können.
 
 .. toctree::
-    :hidden:
+    :maxdepth: 1
 
     Icon <components/icon>
     Address <elements/address>
+    Address-Group <elements/address-group>

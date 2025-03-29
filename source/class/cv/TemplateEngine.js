@@ -153,6 +153,8 @@ qx.Class.define('cv.TemplateEngine', {
      * @param parts {String[]|String} parts to load
      */
     loadParts(parts) {
+      let continueWhenSuccessful = true;
+
       if (!Array.isArray(parts)) {
         parts = [parts];
       }
@@ -171,13 +173,16 @@ qx.Class.define('cv.TemplateEngine', {
         function (states) {
           parts.forEach(function (part, idx) {
             if (states[idx] === 'complete') {
-              this.__partQueue.remove(part);
               this.debug('successfully loaded part ' + part);
-              if (part.startsWith('structure-')) {
+              this.__partQueue.remove(part);
+              if (part.startsWith('structure-') && !this.__partQueue.some(p => p.startsWith('structure-'))) {
                 if (!cv.Config.loadedStructure) {
                   cv.Config.loadedStructure = part.substring(10);
                 }
-                qx.core.Init.getApplication().setStructureLoaded(true);
+                this.debug('successfully loaded all structures. Continue:', continueWhenSuccessful);
+                if (continueWhenSuccessful) {
+                  qx.core.Init.getApplication().setStructureLoaded(true);
+                }
               }
               this.__partQueue.remove(part);
               waitingFor.remove(part);
@@ -206,15 +211,18 @@ qx.Class.define('cv.TemplateEngine', {
       );
 
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(reject, 2000);
+        const timer = setTimeout(() => {
+          continueWhenSuccessful = false;
+          reject('Timeout');
+        }, cv.Config.timeoutStructureLoad);
         if (waitingFor.getLength() === 0) {
-          resolve();
           clearTimeout(timer);
+          resolve();
         } else {
           waitingFor.addListener('changeLength', ev => {
             if (ev.getData() === 0) {
-              resolve();
               clearTimeout(timer);
+              resolve();
             }
           });
         }
@@ -248,6 +256,7 @@ qx.Class.define('cv.TemplateEngine', {
           callback.apply(context, entry);
         }, this);
         this._domFinishedQueue = [];
+        cv.io.BackendConnections.initSystemBackend();
       }
     },
 
@@ -328,7 +337,7 @@ qx.Class.define('cv.TemplateEngine', {
             const alternativeStyles = [baseUri + '/basic.css'];
             alternativeStyles.push({
               uri: baseUri + '/mobile.css',
-              media: `screen and (max-width:${cv.Config.maxMobileScreenWidthh}px)`
+              media: `screen and (max-width:${cv.Config.maxMobileScreenWidth}px)`
             });
 
             alternativeStyles.push(baseUri + '/custom.css');
@@ -336,14 +345,58 @@ qx.Class.define('cv.TemplateEngine', {
             cv.util.ScriptLoader.getInstance().addScripts(baseUri + '/design_setup.js');
           }
         });
+        loader.addListenerOnce('stylesLoaded', this.generateManifest, this);
       }
       // load structure-part
-      await this.loadParts([cv.Config.getStructure()]);
-      if (cv.Application.structureController.parseBackendSettings(xml)) {
-        cv.io.BackendConnections.initBackendClient();
+      try {
+        await this.loadParts([cv.Config.getStructure()]);
+      } catch (e) {
+        // Note: the timeout can be changed by the not published URL parameter
+        // timeoutStructureLoad for debugging reasons. Usually, the server
+        // must be quick enough so that the client doesn't run into any issues
+        // here.
+        this.__showFatalError(`${qx.locale.Manager.tr('loadParts "Structure" failed')}: ${e}`);
+        throw new Error('loadParts "Structure" failed');
+      }
+      if (cv.Application.structureController.parseBackendSettings(xml) || cv.Config.testMode) {
+        cv.io.BackendConnections.initBackendClients();
       }
       cv.Application.structureController.parseSettings(xml);
       await cv.Application.structureController.preParse(xml);
+    },
+
+    generateManifest() {
+      const color = getComputedStyle(document.body).getPropertyValue('background-color');
+      let baseUrl = window.location.pathname;
+      if (baseUrl.endsWith('/index.html')) {
+        const parts = baseUrl.split('/');
+        parts.pop();
+        baseUrl = parts.join('/') + '/';
+      }
+      baseUrl = window.location.origin + baseUrl;
+
+      const startUrl = window.location.origin + window.location.pathname + window.location.search;
+      const manifest = Object.assign(cv.Config.defaultManifest, {
+        start_url: startUrl,
+        scope: startUrl,
+        theme_color: color,
+        background_color: color
+      });
+      for (const icon of manifest.icons) {
+        icon.src = baseUrl + icon.src;
+      }
+      const stringManifest = JSON.stringify(manifest);
+      const blob = new Blob([stringManifest], { type: 'application/json' });
+      const manifestURL = URL.createObjectURL(blob);
+      document.querySelector('#app-manifest').setAttribute('href', manifestURL);
+      let themeColorElement = document.querySelector('#app-theme-color');
+      if (!themeColorElement) {
+        themeColorElement = document.createElement('meta');
+        themeColorElement.setAttribute('id', 'app-theme-color');
+        themeColorElement.setAttribute('name', 'theme-color');
+        document.querySelector('html > head').appendChild(themeColorElement);
+      }
+      document.querySelector('#app-theme-color').setAttribute('content', color);
     },
 
     /**
@@ -497,6 +550,24 @@ qx.Class.define('cv.TemplateEngine', {
           });
         });
       });
+    },
+
+    /**
+     * Display a message when the setup goes wrong and can't be recovered by
+     * the CometVisu itself.
+     * @param message {string}
+     * @private
+     */
+    __showFatalError(message) {
+      const notification = {
+        topic: 'cv.error',
+        title: qx.locale.Manager.tr('CometVisu startup error'),
+        message,
+        severity: 'urgent',
+        unique: true,
+        deletable: false
+      };
+      cv.core.notifications.Router.dispatchMessage(notification.topic, notification);
     }
   },
 

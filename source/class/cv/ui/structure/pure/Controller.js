@@ -87,8 +87,16 @@ qx.Class.define('cv.ui.structure.pure.Controller', {
     parseBackendSettings(xml) {
       const settings = cv.Config.configSettings;
       const pagesElement = xml.documentElement;
+      let defaultBackendName = '';
       if (pagesElement.getAttribute('backend') !== null) {
         settings.backend = pagesElement.getAttribute('backend');
+        defaultBackendName = settings.backend.split(',')[0];
+      } else {
+        defaultBackendName = (
+          cv.Config.URL.backend ||
+          cv.Config.server.backend ||
+          'knxd'
+        ).split(',')[0];
       }
       if (pagesElement.getAttribute('backend-url') !== null) {
         settings.backendUrl = pagesElement.getAttribute('backend-url');
@@ -96,14 +104,24 @@ qx.Class.define('cv.ui.structure.pure.Controller', {
           'The useage of "backend-url" is deprecated. Please use "backend-knxd-url", "backend-mqtt-url" or "backend-openhab-url" instead.'
         );
       }
+
       if (pagesElement.getAttribute('backend-knxd-url') !== null) {
         settings.backendKnxdUrl = pagesElement.getAttribute('backend-knxd-url');
+        if (!defaultBackendName) {
+          defaultBackendName = 'knxd';
+        }
       }
       if (pagesElement.getAttribute('backend-mqtt-url') !== null) {
         settings.backendMQTTUrl = pagesElement.getAttribute('backend-mqtt-url');
+        if (!defaultBackendName) {
+          defaultBackendName = 'mqtt';
+        }
       }
       if (pagesElement.getAttribute('backend-openhab-url') !== null) {
         settings.backendOpenHABUrl = pagesElement.getAttribute('backend-openhab-url');
+        if (!defaultBackendName) {
+          defaultBackendName = 'openhab';
+        }
       }
       if (pagesElement.getAttribute('token') !== null) {
         settings.credentials.token = pagesElement.getAttribute('token');
@@ -114,15 +132,32 @@ qx.Class.define('cv.ui.structure.pure.Controller', {
       if (pagesElement.getAttribute('password') !== null) {
         settings.credentials.password = pagesElement.getAttribute('password');
       }
+
+      // make sure that the default name is the actual type
+      if (defaultBackendName === 'default') {
+        defaultBackendName = 'knxd';
+      }
+      if (defaultBackendName) {
+        cv.data.Model.getInstance().setDefaultBackendName(defaultBackendName);
+      }
       return true;
     },
 
     login() {
-      const client = cv.io.BackendConnections.getClient('main');
-      client.login(true, cv.Config.configSettings.credentials, () => {
-        this.debug('logged in');
-        cv.io.BackendConnections.startInitialRequest();
-      });
+      const clients = cv.io.BackendConnections.getClients();
+      let client;
+      const promises = [];
+      for (const name in clients) {
+        client = clients[name];
+        promises.push(new Promise((res, rej) => {
+          client.login(true, cv.Config.configSettings.credentials, () => {
+            this.debug(name + ' logged in');
+            cv.io.BackendConnections.startInitialRequest(name);
+            res();
+          });
+        }));
+      }
+      return Promise.all(promises);
     },
 
     parseSettings(xml, done) {
@@ -176,6 +211,10 @@ qx.Class.define('cv.ui.structure.pure.Controller', {
      * @param xml {XMLDocument} loaded config file
      */
     createUI(xml) {
+      cv.util.ScriptLoader.getInstance().addListenerOnce('stylesAndScriptsLoaded', () => {
+        cv.ui.structure.pure.layout.ResizeHandler.invalidateScreensize();
+      }, this);
+
       if (!cv.Config.cacheUsed) {
         this.debug('creating pages');
         const page = xml.querySelector('pages > page'); // only one page element allowed...
@@ -189,7 +228,11 @@ qx.Class.define('cv.ui.structure.pure.Controller', {
       qx.event.message.Bus.dispatchByName('setup.dom.finished.before');
       cv.TemplateEngine.getInstance().setDomFinished(true);
 
-      this.login();
+      this.login().then(() => {
+        if (qx.core.Environment.get('qx.debug')) {
+          cv.report.Replay.start();
+        }
+      });
 
       this.initLayout();
     },
@@ -271,14 +314,14 @@ qx.Class.define('cv.ui.structure.pure.Controller', {
       return false;
     },
 
-    getInitialAddresses() {
+    getInitialAddresses(backendName) {
       const startPageAddresses = {};
       const pageWidget = cv.ui.structure.WidgetFactory.getInstanceById(cv.Config.initialPage);
 
       pageWidget.getChildWidgets().forEach(function (child) {
         const address = child.getAddress ? child.getAddress() : {};
         for (let addr in address) {
-          if (Object.prototype.hasOwnProperty.call(address, addr)) {
+          if (Object.prototype.hasOwnProperty.call(address, addr) && addr.backendType === backendName) {
             startPageAddresses[addr] = 1;
           }
         }
@@ -321,15 +364,8 @@ qx.Class.define('cv.ui.structure.pure.Controller', {
 
       // run the Trick-O-Matic scripts for great SVG backdrops
       document.querySelectorAll('embed').forEach(function (elem) {
-        if (typeof elem.getSVGDocument === 'function') {
-          const svg = elem.getSVGDocument();
-          if (svg === null || svg.readyState !== 'complete') {
-            elem.onload = cv.ui.TrickOMatic.run;
-          } else {
-            cv.ui.TrickOMatic.run.call(elem);
-          }
-        }
-      });
+        this._runTrickOMatic(elem, 0);
+      }, this);
 
       document.querySelectorAll('.icon').forEach(cv.util.IconTools.fillRecoloredIcon, cv.util.IconTools);
       document.querySelectorAll('.loading').forEach(function (elem) {
@@ -337,6 +373,32 @@ qx.Class.define('cv.ui.structure.pure.Controller', {
       }, this);
 
       qx.core.Init.getApplication().addListener('changeMobile', this._onMobileChanged, this);
+    },
+
+    _runTrickOMatic(elem, retries) {
+      if (elem && typeof elem.getSVGDocument === 'function') {
+        try {
+          const svg = elem.getSVGDocument();
+          if (svg === null || svg.readyState !== 'complete') {
+            elem.onload = cv.ui.TrickOMatic.run;
+          } else {
+            cv.ui.TrickOMatic.run.call(elem);
+          }
+        } catch (e) {
+          if (e.name === 'NotSupportedError') {
+            if (retries <= 5) {
+              retries++;
+              window.requestAnimationFrame(() => {
+                this._runTrickOMatic(elem, retries);
+              });
+            } else {
+              this.error(e);
+            }
+          } else {
+            this.error(e);
+          }
+        }
+      }
     },
 
     doScreenSave() {
@@ -591,6 +653,13 @@ qx.Class.define('cv.ui.structure.pure.Controller', {
       }
       // not found
       return null;
+    },
+
+    updateSentryScope() {
+      if (cv.Config.sentryEnabled && window.Sentry) {
+        Sentry.setTag('ui.structure', 'pure');
+        Sentry.setTag('ui.design', cv.Config.getDesign());
+      }
     }
   },
 

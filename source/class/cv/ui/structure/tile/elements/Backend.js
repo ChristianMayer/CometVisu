@@ -34,7 +34,18 @@ qx.Class.define('cv.ui.structure.tile.elements.Backend', {
 
     _init() {
       const element = this._element;
-      const type = element.getAttribute('type');
+      let type = element.getAttribute('type');
+      if (type && type.startsWith('class:')) {
+        const className = type.split(':').pop();
+        if (!cv.io.BackendConnections.isRegistered(className)) {
+          // wait until client class has been loaded
+          cv.io.BackendConnections.addClassLoadedListener(className, () => {
+            this._init();
+          });
+          return;
+        }
+        type = className;
+      }
       const uriString = element.hasAttribute('uri') ? element.getAttribute('uri') : '';
       let uri;
       if (uriString) {
@@ -117,6 +128,11 @@ qx.Class.define('cv.ui.structure.tile.elements.Backend', {
         this._name = name;
         this.__applyValues = [];
         client.update = data => model.updateFrom(name, data); // override clients update function
+
+        for (const data of element.querySelectorAll(':scope > cv-resource')) {
+          client.setResourcePath(data.getAttribute('name'), data.textContent.trim());
+        }
+
         client.login(true, credentials, () => {
           this.debug(name, 'connected');
           if (element.hasAttribute('default') && element.getAttribute('default') === 'true') {
@@ -127,12 +143,7 @@ qx.Class.define('cv.ui.structure.tile.elements.Backend', {
               this.debug(name, 'apply update', address, value);
               model.onUpdate(address, value, name);
             }
-            const addressesToSubscribe = model.getAddresses(name);
-            this.debug(name, 'subscribing to', addressesToSubscribe.length, 'addresses');
-
-            if (addressesToSubscribe.length !== 0) {
-              client.subscribe(addressesToSubscribe);
-            }
+            cv.io.BackendConnections.startInitialRequest(name);
           };
           if (cv.TemplateEngine.getInstance().isDomFinished()) {
             doSubscribe();
@@ -146,19 +157,6 @@ qx.Class.define('cv.ui.structure.tile.elements.Backend', {
             );
           }
         });
-
-        for (const data of element.querySelectorAll(':scope > cv-data')) {
-          if (data.hasAttribute('address')) {
-            let value = data.textContent.trim();
-            if (data.hasAttribute('transform')) {
-              const encoding = data.getAttribute('transform');
-              const encodedValue = cv.Transform.encodeBusAndRaw({ transform: encoding }, value);
-
-              value = encodedValue.bus;
-            }
-            this.__applyValues.push([data.getAttribute('address'), value]);
-          }
-        }
       } else {
         this.error('<cv-backend> must have a type attribute');
       }

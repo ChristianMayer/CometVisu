@@ -21,6 +21,22 @@ qx.Interface.define('cv.io.IClient', {
       check: 'String',
       nullable: true,
       event: 'changedServer'
+    },
+
+    /**
+     * needed to be able to check if the incoming update is the initial answer or a successing update
+     */
+    dataReceived: {
+      check: 'Boolean',
+      init: false
+    },
+
+    /**
+     * The name this client is registered for
+     */
+    name: {
+      check: 'String',
+      nullable: true
     }
   },
 
@@ -43,7 +59,7 @@ qx.Interface.define('cv.io.IClient', {
     getType() {},
 
     /**
-     * Returns true, when the backend provides a special data provider for this kins of data
+     * Returns true, when the backend provides a special data provider for this kind of data
      * @param name {String}
      * @return {Boolean}
      */
@@ -55,6 +71,14 @@ qx.Interface.define('cv.io.IClient', {
      * @return {String}
      */
     getProviderUrl(name) {},
+
+    /**
+     * Return the provided data directly from client, return null when not implemented
+     * @param name {String}
+     * @param format {String} 'monaco' for texteditor and 'dp' for Tree editor
+     * @return {Promise<variant>|null}
+     */
+    getProviderData: function (name, format) {},
 
     /**
      * Mapping function the convert the data from the backend to a format the CometVisu data provider consumer can process.
@@ -75,11 +99,17 @@ qx.Interface.define('cv.io.IClient', {
      * Subscribe to the addresses in the parameter. The second parameter
      * (filter) is optional
      *
-     * @param addresses {Array?} addresses to subscribe to
+     * @param addresses {Array<String>} addresses to subscribe to
      * @param filters {Array?} Filters
      *
      */
     subscribe(addresses, filters) {},
+
+    /**
+     * Add a single subscription
+     * @param address {String}
+     */
+    addSubscription(address) {},
 
     /**
      * This function starts the communication by a login and then runs the
@@ -101,13 +131,26 @@ qx.Interface.define('cv.io.IClient', {
     authorize(req) {},
 
     /**
+     * Client is able to authorize a request, by knowing the credentials
+     * @return {Boolean}
+     */
+    canAuthorize() {},
+
+    /**
      * return the relative path to a resource on the currently used backend
      *
-     * @param name {String} Name of the resource (e.g. login, read, write, rrd)
+     * @param name {String} Name of the resource (e.g. login, read, write, chart)
      * @param params {Map?} optional data needed to generate the resource path
      * @return {String|null} relative path to the resource, returns `null` when the backend does not provide that resource
      */
     getResourcePath(name, params) {},
+
+    /**
+     * Set the relative path to a resource on the currently used backend
+     * @param name {String} Name of the resource (e.g. login, read, write, chart)
+     * @param path {String} relative path to the resource
+     */
+    setResourcePath(name, path) {},
 
     /**
      * This client provides an own processor for charts data
@@ -116,10 +159,11 @@ qx.Interface.define('cv.io.IClient', {
     hasCustomChartsDataProcessor() {},
 
     /**
-     * For custom backend charts data some processing might be done to convert it in a format the CometVisu can handle
-     * @param data {var}
+     * For custom backend chart data some processing might be done to convert it in a format the CometVisu can handle
+     * @param data {any}
+     * @param config {{scaling: number, offset: number}}
      */
-    processChartsData(data) {},
+    processChartsData(data, config) {},
 
     /**
      * This function sends a value
@@ -147,6 +191,7 @@ qx.Interface.define('cv.io.IClient', {
      * Called directly before the page gets unloaded. Can be used to disconnect correctly.
      */
     terminate() {},
+
     /**
      * Handle the incoming state updates. This method is not implemented by the client itself.
      * It is injected by the project using the client.

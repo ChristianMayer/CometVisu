@@ -25,6 +25,17 @@
 qx.Class.define('cv.ui.structure.tile.components.Value', {
   extend: cv.ui.structure.tile.components.AbstractComponent,
   include: [cv.ui.structure.tile.MVisibility, cv.ui.structure.tile.MResize],
+
+  /*
+  ***********************************************
+    CONSTRUCTOR
+  ***********************************************
+  */
+  construct(element) {
+    super(element);
+    this.addListener('changeVisible', this._applyVisible, this);
+  },
+
   /*
   ***********************************************
     MEMBERS
@@ -46,8 +57,8 @@ qx.Class.define('cv.ui.structure.tile.components.Value', {
       }
     },
 
-    _applyVisible(visible) {
-      if (visible) {
+    _applyVisible(ev) {
+      if (ev.getData()) {
         if (this._queuedOverflowDetection) {
           this._debouncedDetectOverflow();
         }
@@ -74,13 +85,11 @@ qx.Class.define('cv.ui.structure.tile.components.Value', {
     },
 
     _updateValue(mappedValue, value) {
-      const target = this._element.querySelector('.value');
       let styleClass = '';
-      if (target) {
+      for (const target of this._element.querySelectorAll('.value')) {
         const tagName = target.tagName.toLowerCase();
         switch (tagName) {
           case 'cv-icon':
-            target._instance.setId(mappedValue);
             if (this._element.hasAttribute('styling')) {
               styleClass = cv.Application.structureController.styleValue(
                 this._element.getAttribute('styling'),
@@ -88,11 +97,23 @@ qx.Class.define('cv.ui.structure.tile.components.Value', {
                 this.__store
               );
             }
-            target._instance.setStyleClass(styleClass);
+            if (target._instance) {
+              target._instance.setId('' + mappedValue);
+              target._instance.setStyleClass(styleClass);
+            } else {
+              // try again in next frame
+              window.requestAnimationFrame(() => {
+                if (target._instance) {
+                  target._instance.setId('' + mappedValue);
+                  target._instance.setStyleClass(styleClass);
+                } else {
+                  this.error('id and styleClass could not be applied, custom element not initialized yet!');
+                }
+              });
+            }
             break;
           case 'meter':
-            target.setAttribute('value', mappedValue);
-            target.innerHTML = '' + mappedValue;
+            target.setAttribute('value', value);
             break;
           case 'cv-round-progress':
             if (typeof value === 'string') {

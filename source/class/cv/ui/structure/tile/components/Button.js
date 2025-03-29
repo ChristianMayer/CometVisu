@@ -105,6 +105,7 @@ qx.Class.define('cv.ui.structure.tile.components.Button', {
      * @var {Map} value store for addresses to be able to use them e.g. in mapping formulas
      */
     __store: null,
+    _triggerOnValue: null,
 
     _parseInt(val) {
       const intVal = parseInt(val);
@@ -148,8 +149,8 @@ qx.Class.define('cv.ui.structure.tile.components.Button', {
 
       this._writeAddresses = writeAddresses;
 
+      const events = {};
       if (writeAddresses.length > 0) {
-        const events = {};
         let eventSource = element;
         if (element.getAttribute('whole-tile') === 'true') {
           // find parent tile and use it as event source
@@ -184,6 +185,12 @@ qx.Class.define('cv.ui.structure.tile.components.Button', {
           })
         );
       }
+      if (element.hasAttribute('doc-link') && !Object.prototype.hasOwnProperty.call(events, 'click')) {
+        element.addEventListener('click', ev => {
+          this.onClicked(ev);
+        });
+      }
+      let triggerAddresses = [];
       if (hasReadAddress) {
         element.addEventListener('stateUpdate', ev => {
           this.onStateUpdate(ev);
@@ -192,29 +199,36 @@ qx.Class.define('cv.ui.structure.tile.components.Button', {
         });
       } else if (element.hasAttribute('mapping') || element.hasAttribute('styling')) {
         // apply the trigger state
-        const triggerAddresses = writeAddresses.filter(addr => addr.hasAttribute('value') && !addr.hasAttribute('on'));
-
-        if (triggerAddresses.length === 1) {
-          const value = triggerAddresses[0].getAttribute('value');
-          qx.event.Timer.once(
-            () => {
-              // using == comparisons to make sure that e.g. 1 equals "1"
-              // noinspection EqualityComparisonWithCoercionJS
-              this.setOn(value == this.getOnValue());
-            },
-            this,
-            1000
-          );
-        }
+        triggerAddresses = writeAddresses.filter(addr => addr.hasAttribute('value') && !addr.hasAttribute('on'));
       }
 
       // detect button type
       if (
         !hasReadAddress &&
-        writeAddresses.filter(addr => addr.hasAttribute('value') && !addr.hasAttribute('on')).length === 1
+        triggerAddresses.length === 1
       ) {
         // only one write address with a fixed value and no special event => simple trigger
         this.setType('trigger');
+
+        if (!element.hasAttribute('on-value')) {
+          // we consider the trigger address value as on-value when no one is given
+          this._triggerOnValue = triggerAddresses[0].getAttribute('value');
+        } else {
+          this._triggerOnValue = this.getOnValue();
+        }
+
+        const value = triggerAddresses[0].getAttribute('value');
+        qx.event.Timer.once(
+          () => {
+            // set it to the opposite of what is being sent when clicked to make the feedback simulation work
+            // e.g. value="1", trigger is off and when clicked for a short amount of time in on state,
+            // using == comparisons to make sure that e.g. 1 equals "1"
+            // noinspection EqualityComparisonWithCoercionJS
+            this.setOn(value != this._triggerOnValue);
+          },
+          this,
+          1000
+        );
       } else {
         let hasDown = false;
         let hasUp = false;
@@ -325,14 +339,10 @@ qx.Class.define('cv.ui.structure.tile.components.Button', {
 
     _applyStyleClass(value, oldValue) {
       const classes = this._element.classList;
-      if (oldValue) {
-        if (classes.contains(oldValue)) {
-          classes.replace(oldValue, value);
-        } else {
-          classes.add(value);
-          classes.remove(oldValue);
-        }
-      } else if (value) {
+      if (oldValue && classes.contains(oldValue)) {
+        classes.remove(oldValue);
+      }
+      if (value) {
         classes.add(value);
       }
     },
@@ -356,7 +366,7 @@ qx.Class.define('cv.ui.structure.tile.components.Button', {
     /**
      * Handles the incoming data from the backend for this widget
      *
-     * @param ev {CustomEvent} stateUpdate event fired from an cv-address component
+     * @param ev {CustomEvent} stateUpdate event fired from a cv-address component
      */
     onStateUpdate(ev) {
       // using == comparisons to make sure that e.g. 1 equals "1"
@@ -376,39 +386,59 @@ qx.Class.define('cv.ui.structure.tile.components.Button', {
         this.setProgress(ev.detail.state);
       } else if (target.startsWith('store:')) {
         this.__store.set(target.substring(6), ev.detail.state);
+      } else if (target === 'store') {
+        // use targetConfig as store key if available, address as fallback
+        this.__store.set(ev.detail.targetConfig && ev.detail.targetConfig.length === 1 ? ev.detail.targetConfig[0] : ev.detail.address, ev.detail.state);
       }
     },
 
     onClicked(event) {
       this.createRipple(event);
-      if (!this._writeAddresses) {
-        this._writeAddresses = Array.prototype.filter.call(
-          this._element.querySelectorAll('addresses > cv-address'),
-          address => !address.hasAttribute('mode') || address.getAttribute('mode') !== 'read'
-        );
-      }
-      const ev = new CustomEvent('sendState', {
-        detail: {
-          value: this.isOn() ? this.getOffValue() : this.getOnValue(),
-          source: this
+      if (this._element.hasAttribute('doc-link')) {
+        let relPath = this._element.getAttribute('doc-link');
+        // add locale and version
+        const baseVersion = cv.Version.VERSION.split('.').slice(0, 2).join('.');
+        let language = qx.locale.Manager.getInstance().getLanguage();
+        if (language !== 'de') {
+          // documentation only exists in 'de' and 'en'
+          language = 'en';
         }
-      });
+        window.open(`https://www.cometvisu.org/CometVisu/${language}/${baseVersion}/manual/${relPath}`);
+        event.stopPropagation();
+      } else {
+        if (!this._writeAddresses) {
+          this._writeAddresses = Array.prototype.filter.call(
+            this._element.querySelectorAll('addresses > cv-address'),
+            address => !address.hasAttribute('mode') || address.getAttribute('mode') !== 'read'
+          );
+        }
+        const ev = new CustomEvent('sendState', {
+          detail: {
+            value: this.isOn() ? this.getOffValue() : this.getOnValue(),
+            source: this
+          }
+        });
 
-      if (this.getType() === 'trigger') {
-        // simulate feedback
-        this.setOn(true);
-        qx.event.Timer.once(
-          () => {
-            this.setOn(false);
-          },
-          null,
-          250
-        );
+        const wa = this._writeAddresses
+          .filter(addr => !addr.hasAttribute('on') || addr.getAttribute('on') === 'click');
+
+        if (this.getType() === 'trigger') {
+          // simulate feedback
+          // using == comparisons to make sure that e.g. 1 equals "1"
+          // noinspection EqualityComparisonWithCoercionJS
+          const simulatedValue = wa[0].getAttribute('value') == this._triggerOnValue;
+          this.setOn(simulatedValue);
+          qx.event.Timer.once(
+            () => {
+              this.setOn(!simulatedValue);
+            },
+            null,
+            500
+          );
+        }
+        wa.forEach(address => address.dispatchEvent(ev));
+        event.stopPropagation();
       }
-      this._writeAddresses
-        .filter(addr => !addr.hasAttribute('on') || addr.getAttribute('on') === 'click')
-        .forEach(address => address.dispatchEvent(ev));
-      event.stopPropagation();
     },
 
     onPointerDown() {

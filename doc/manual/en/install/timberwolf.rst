@@ -77,7 +77,7 @@ another container that simultaneously incorporates this RRD container.
 
 **Important:** The internal format of the RRD files is architecture specific.
 Thus, the RRG files from WireGate (32 bit architecture) can not be
-used directly on the Timberwolf (64 bit architecture) [1].
+used directly on the Timberwolf (64 bit architecture) [1]_.
 
 Creating a Container
 ^^^^^^^^^^^^^^^^^^^^
@@ -86,8 +86,7 @@ Under: *Containers* → *Add Container*
 
 - Name: ``CometVisu``
 - Image configuration: Name: ``cometvisu/cometvisu:latest`` for the big servers
-  (TWS2xxx) or ``cometvisu/cometvisu:latest-arm`` for the rail mounted smaller
-  servers
+  (TWS2xxx) and for the rail mounted smaller servers
 - Port mapping: host ``18080``, container ``80``
 - Advanced container settings:
 
@@ -253,10 +252,10 @@ version, a separate volume (for example ``CometVisuTestConfig``)
 should be created, as the format of the config files may change
 incompatibly due to future updates.
 
-As described under :ref:`Docker <docker>` has the newest
-Development version the day ``testing``. Thus, under
+As described under :ref:`Docker <docker>` the newest
+Development version the tag ``testing``. Thus, under
 *Creating the container* as ``name`` ``cometvisu/cometvisu:testing``
-or ``cometvisu/cometvisu:testing-arm`` to use.
+must be used.
 
 
 In order to have a uniform environment for error reporting, etc.
@@ -265,7 +264,7 @@ the testing version should be installed with these parameters:
 - Container:
 
   - Name: ``CometVisuTest``
-  - Image configuration: Name: ``cometvisu/cometvisu:testing`` or ``cometvisu/cometvisu:testing-arm``
+  - Image configuration: Name: ``cometvisu/cometvisu:testing``
   - Port mapping: host ``28080``, container ``80``
   - Advanced container settings:
 

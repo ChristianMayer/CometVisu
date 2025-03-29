@@ -1,10 +1,10 @@
-const { Octokit } = require('@octokit/action');
-const simpleGit = require('simple-git');
-const camelCase = require('camelcase');
-const AdmZip = require('adm-zip');
-const https = require('follow-redirects').https;
-const fs = require('fs');
-const cvInfo = require('../../../package.json');
+import { Octokit } from '@octokit/action';
+import simpleGit from 'simple-git';
+import camelCase from 'camelcase';
+import AdmZip from 'adm-zip';
+import https from 'follow-redirects';
+import * as fs from 'fs';
+import cvInfo from '../../../package.json' assert { type: "json" };
 
 //
 // For local testing run this with the following environment variables set:
@@ -37,10 +37,10 @@ let core = {
 }
 try {
   if (process.env.GITHUB_EVENT_NAME) {
-    core = require('@actions/core');
+    core = await import('@actions/core');
   }
 } catch (e) {
-  console.log("! - not in action context")
+  console.log("! - not in action context", e)
 }
 
 class GithubClient {

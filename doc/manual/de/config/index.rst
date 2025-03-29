@@ -136,7 +136,7 @@ Tags umschlossen aufgenommen werden:
 Navigationselemente in der Pure-Struktur
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Zur Navigation stehen in der Cometvisu zahlreiche Möglichkeiten für die Navigation durch den Benutzer zur Verfügung:  
+In der CometVisu stehen zahlreiche Möglichkeiten für die Navigation durch den Benutzer zur Verfügung:
 
 -  Das :ref:`Page-Widget <page>` ruft die zugehörige Unterseite auf.
 -  Die Top-Navigation Anzeige: zeigt den aktuellen Pfad und erlaubt auf übergeordnete Seiten
@@ -298,8 +298,13 @@ nicht in HTML-Code umgewandelt sondern direkt in den Browser geladen.
 * Automatisches Anpassen an alle Bildschirmgrößen (responsives Design). Spezielle Layout-Angaben in der Konfigurationsdatei sind nicht nötig.
 * Höhere Geschwindigkeit beim Laden, da die Konfigurationsdatei nicht mehr geparsed werden muss.
 * Navigationsmenüs werden automatisch erstellt.
-* Spezielle Widgets für Smarthome typische Aufgaben (Dimmer, Rollladen, Raumtemperaturregler).
+* Spezielle Widgets für Smarthome typische Aufgaben (Schalter, Dimmer, Rollladen, Raumtemperaturregler, Media-Player, Charts).
 * Einfaches Erstellen eigener, wiederverwendbarer Widgets ohne Programmierkenntnisse.
+* Entworfen nach dem "mobile-first" Ansatz, d.h. die gute Darstellung & Bedienbarkeit auf Handy-Bildschirmen hat oberste Priorität
+
+.. figure:: _static/tile-demo.png
+
+   Demo der Tile-Struktur auf einem Handydisplay.
 
 .. toctree::
     :maxdepth: 1

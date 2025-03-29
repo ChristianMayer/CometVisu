@@ -60,6 +60,7 @@ if [ ! -d "out/de/$VERSION_PATH" ]; then
 fi;
 
 if [[ "$GENERATE_DOCS" -eq 1 ]]; then
+
   # Run our creation script
   echo "generating german manual to extract screenshot examples"
   ${CV} doc --doc-type manual -f -l de --target-version=${VERSION_PATH}
@@ -86,7 +87,10 @@ if [[ "$GENERATE_DOCS" -eq 1 ]]; then
       # we need a source-build to generate screenshots
       qx compile -t=source -f=false
       echo "generate API screenshots"
-      ${DOCKER_RUN} grunt screenshots --subDir=build --browserName=chrome --target=source
+      if test -f .protractor-env; then
+        source .protractor-env
+      fi
+      grunt screenshots --subDir=build --browserName=chrome --target=source
       BUILD_CV=0
 
       # move generated screenshots to the api viewer
@@ -105,7 +109,7 @@ if [[ "$GENERATE_DOCS" -eq 1 ]]; then
   fi
 
   echo "generating english manual, including screenshot generation for all languages"
-  ${DOCKER_RUN} ${CV} doc --doc-type manual -c -f -l en -t source --target-version=${VERSION_PATH}
+  ${CV} doc --doc-type manual -c -f -l en -t source --target-version=${VERSION_PATH}
   echo "generating german manual again with existing screenshots"
   ${CV} doc --doc-type manual -f -l de --target-version=${VERSION_PATH}
 
@@ -121,10 +125,10 @@ fi
 
 if [[ "$GENERATE_DEMO" -eq 1 ]]; then
   echo "generating test mode build"
-  CV_TAG_RUNTIME=demo CV_TESTMODE=resource/demo/media/demo_testmode_data.json qx deploy --clean -t build -f=false --source-maps --save-source-in-map -o out/de/$VERSION_PATH/demo
-  grunt update-demo-config --base-dir=out/de/$VERSION_PATH/demo
+  sed -i 's/"qx.globalErrorHandling": true,/"qx.globalErrorHandling": false,/g' compile.json
+  qx deploy --clean -t build -f=false --source-maps --save-source-in-map -o out/de/$VERSION_PATH/demo
   # Copy demo-mode to default config
-  cp out/de/$VERSION_PATH/demo/resource/demo/visu_config_demo_testmode.xml out/de/$VERSION_PATH/demo/resource/config/visu_config.xml
+  cp out/de/$VERSION_PATH/demo/resource/demo/visu_config_demo-tile.xml out/de/$VERSION_PATH/demo/resource/config/visu_config.xml
 fi
 
 echo "copying JSON schema for hidden configuration"

@@ -23,6 +23,7 @@
  * @since 0.12.0
  *
  * @asset(manager/*)
+ * @ignore(sessionStorage)
  */
 qx.Class.define('cv.ui.manager.Main', {
   extend: qx.core.Object,
@@ -45,9 +46,11 @@ qx.Class.define('cv.ui.manager.Main', {
     this.__actionDispatcher.setMain(this);
 
     this.__initCommands();
-    this._draw();
 
+    this._draw();
     qx.event.message.Bus.subscribe('cv.manager.*', this._onManagerEvent, this);
+
+    this._initAuth();
 
     // Initialize tooltip manager
     qx.ui.tooltip.Manager.getInstance();
@@ -401,6 +404,49 @@ qx.Class.define('cv.ui.manager.Main', {
       this._tree.refresh();
     },
 
+    _initAuth() {
+      if (cv.io.rest.Client.AUTH_REQUIRED && qx.core.Init.getApplication().isServedByOpenhab()) {
+        let backend = cv.io.BackendConnections.getClientByType('openhab');
+        if (backend && backend.canAuthorize()) {
+          // already logged in
+          return;
+        }
+        const storedToken = sessionStorage.getItem('openhab.cv:token');
+        if (storedToken) {
+          if (!backend) {
+            backend = cv.io.BackendConnections.addBackendClient('openhab', 'openhab', undefined, 'manager');
+          }
+          backend.login(true, { username: storedToken });
+        } else {
+          this._handleUnauthorized();
+        }
+      }
+    },
+
+    _handleUnauthorized() {
+      if (cv.io.rest.Client.AUTH_REQUIRED && qx.core.Init.getApplication().isServedByOpenhab()) {
+        const storedToken = sessionStorage.getItem('openhab.cv:token');
+        if (storedToken) {
+          // remove old token, because it does not work anymore
+          sessionStorage.removeItem('openhab.cv:token');
+        }
+        let loginWidget = qxl.dialog.Dialog.prompt(qx.locale.Manager.tr('Please provide an openHAB API token. It can be generated in openHABs main UI.')).set({
+          caption: qx.locale.Manager.tr('Provide API token')
+        });
+        loginWidget.promise().then(token => {
+          if (token) {
+            sessionStorage.setItem('openhab.cv:token', token);
+            let backend = cv.io.BackendConnections.getClientByType('openhab');
+            if (!backend) {
+              backend = cv.io.BackendConnections.addBackendClient('openhab', 'openhab', undefined, 'manager');
+            }
+            backend.login(true, { username: token });
+          }
+        });
+        loginWidget.show();
+      }
+    },
+
     __findConfigFile(name) {
       let file = null;
       let demoFolder = null;
@@ -534,6 +580,9 @@ qx.Class.define('cv.ui.manager.Main', {
         }
         if (!editorConfig.instance) {
           editorConfig.instance = new editorConfig.Clazz();
+          if (editorConfig.instance instanceof cv.ui.manager.editor.AbstractEditor) {
+            editorConfig.instance.addListener('unauthorized', this._handleUnauthorized, this);
+          }
         }
         editorConfig.instance.setFile(file);
         if (this._stack.indexOf(editorConfig.instance) < 0) {
@@ -1141,6 +1190,7 @@ qx.Class.define('cv.ui.manager.Main', {
     },
 
     _showAbout() {
+      const app = qx.core.Init.getApplication();
       const dialogConf = {
         caption: qx.locale.Manager.tr('About'),
         modal: true,
@@ -1151,11 +1201,16 @@ qx.Class.define('cv.ui.manager.Main', {
  <img src="resource/icons/comet_icon_128x128_ff8000.png" width="128" height="128"/>
  <h2>CometVisu ${cv.Version.VERSION}</h2>
  <div class="info">
-   <label for="date">${qx.locale.Manager.tr('Build date')}: </label><span id="date">${cv.Version.DATE}</span><br/>
-   <label for="build">${qx.locale.Manager.tr('Build revision')}: </label><span id="build">${cv.Version.REV}</span><br/>
-   <label for="lib-version">${qx.locale.Manager.tr('Library version')}: </label><span id="lib-version">${
-          cv.Version.LIBRARY_VERSION
-        }</span>
+   <label for="date">${qx.locale.Manager.tr('Build date')}: </label>
+   <span id="date">${cv.Version.DATE}</span><br/>
+   <label for="build">${qx.locale.Manager.tr('Build revision')}: </label>
+   <span id="build">${cv.Version.REV}</span><br/>
+   <label for="lib-version">${qx.locale.Manager.tr('Library version')}: </label>
+   <span id="lib-version">Pure: ${cv.Version.LIBRARY_VERSION_PURE}, Tile: ${cv.Version.LIBRARY_VERSION_TILE}</span><br/>
+   <label for="server">${qx.locale.Manager.tr('Server')}: </label>
+   <span id="server">${app.getServer() || '?'}</span><br/>
+   <label for="php-version">${qx.locale.Manager.tr('PHP version') || '?'}: </label>
+   <span id="php-version">${app.getServerPhpVersion()}</span>
  </div>
 </div>`
       };

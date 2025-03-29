@@ -54,7 +54,11 @@
  */
 qx.Class.define('cv.ui.structure.tile.components.List', {
   extend: cv.ui.structure.tile.components.AbstractComponent,
-  include: [cv.ui.structure.tile.MVisibility, cv.ui.structure.tile.MRefresh],
+  include: [
+    cv.ui.structure.tile.MVisibility,
+    cv.ui.structure.tile.MRefresh,
+    cv.ui.structure.tile.MFullscreen
+  ],
 
   /*
   ***********************************************
@@ -84,10 +88,14 @@ qx.Class.define('cv.ui.structure.tile.components.List', {
     _modelInstance: null,
 
     _init() {
+      this._checkEnvironment();
       const element = this._element;
       this._model = [];
       let refreshOnUpdate = false;
       const model = element.querySelector('model');
+      if (element.parentElement) {
+        element.parentElement.classList.add('has-list');
+      }
       if (!model) {
         this.error('cv-list needs a model');
         return;
@@ -99,6 +107,24 @@ qx.Class.define('cv.ui.structure.tile.components.List', {
         this._limit = parseInt(model.getAttribute('limit'));
       }
       const readAddresses = model.querySelectorAll(':scope > cv-address:not([mode="write"])');
+
+      // if we have top level write addresses, we need to listen to sendState Events from the list items
+      for (let address of element.querySelectorAll(':scope > cv-address')) {
+        if (address.getAttribute('mode') !== 'read') {
+          element.addEventListener('sendState', ev => {
+            // forward event copy (dispatching the same is not possible) to all write addresses
+            const evCopy = new CustomEvent('sendState', {
+              bubbles: ev.bubbles,
+              cancelable: ev.cancelable,
+              detail: ev.detail
+            });
+            for (let a of element.querySelectorAll(':scope > cv-address')) {
+              a.dispatchEvent(evCopy);
+            }
+          });
+          break;
+        }
+      }
 
       if (model.hasAttribute('sort-by')) {
         const sortBy = model.getAttribute('sort-by');
@@ -131,18 +157,26 @@ qx.Class.define('cv.ui.structure.tile.components.List', {
           return 0;
         };
       }
-      if (model.hasAttribute('src')) {
+      if (model.hasAttribute('src') || model.hasAttribute('config-section')) {
         // fetch from url
         this._getModel = async () => {
-          const res = await cv.io.Fetch.fetch(model.getAttribute('src'), null, model.getAttribute('proxy') === 'true');
-
+          const options = {
+            ttl: this.getRefresh()
+          };
+          for (const proxyParam of ['self-signed', 'config-section', 'auth-type']) {
+            if (model.hasAttribute(proxyParam)) {
+              options[proxyParam] = model.getAttribute(proxyParam);
+            }
+          }
+          const res = await cv.io.Fetch.cachedFetch(model.getAttribute('src'), options, model.getAttribute('proxy') === 'true');
           return res;
         };
       } else if (model.hasAttribute('class')) {
         // initialize internal class instance that implements cv.io.listmodel.IListModel
         const Clazz = cv.io.listmodel.Registry.get(model.getAttribute('class'));
         if (Clazz) {
-          const modelInstance = new Clazz();
+          const modelInstance = this._modelInstance = new Clazz();
+          modelInstance.addListener('refresh', () => this.refresh());
           if (model.hasAttribute('parameters')) {
             const props = {};
             for (let entry of model.getAttribute('parameters').split(',')) {
@@ -202,6 +236,47 @@ qx.Class.define('cv.ui.structure.tile.components.List', {
           this.setRefresh(parseInt(element.getAttribute('refresh')));
         }
       }
+
+      this._element.addEventListener('click', ev => {
+        let templateRoot = ev.target;
+        let data = {};
+        const collectData = elem => {
+          if (elem) {
+            for (let i = 0; i < elem.attributes.length; i++) {
+              let attrib = elem.attributes[i];
+              if (attrib.name.startsWith('data-')) {
+                data[attrib.name.substring(5)] = attrib.value;
+              }
+            }
+          }
+        };
+        collectData(templateRoot);
+        let level = 0;
+        let model = templateRoot.$$model;
+        while (templateRoot && (!model || !data.action) && level <= 5) {
+          templateRoot = templateRoot.parentElement;
+          if (templateRoot === this._element) {
+            break;
+          }
+          if (templateRoot) {
+            if (!model && templateRoot.$$model) {
+              model = templateRoot.$$model;
+            }
+            if (!data.action && templateRoot.hasAttribute('data-action')) {
+              collectData(templateRoot);
+            }
+          }
+          level++;
+        }
+
+        if (data.action && this._modelInstance && this._modelInstance.handleEvent(ev, data, model)) {
+          ev.stopPropagation();
+        }
+      });
+
+      if (element.hasAttribute('allow-fullscreen') && element.getAttribute('allow-fullscreen') === 'true') {
+        this._initFullscreenSwitch();
+      }
     },
 
     onStateUpdate(ev) {
@@ -234,7 +309,11 @@ qx.Class.define('cv.ui.structure.tile.components.List', {
         newModel = this._getModel();
       }
       if (newModel instanceof Promise) {
-        newModel = await newModel;
+        try {
+          newModel = await newModel;
+        } catch (e) {
+          this.error('error refreshing async model:', e);
+        }
       }
       let target = element.querySelector(':scope > ul');
       if (template.getAttribute('wrap') === 'false') {
@@ -268,10 +347,12 @@ qx.Class.define('cv.ui.structure.tile.components.List', {
         if (newModel.length === 0) {
           const whenEmptyTemplate = element.querySelector(':scope > template[when="empty"]');
 
+          // remove old entries
+          while (target.firstElementChild && target.firstElementChild.hasAttribute('data-row')) {
+            target.removeChild(target.firstElementChild);
+          }
+
           if (whenEmptyTemplate && !target.querySelector(':scope > .empty-model')) {
-            while (target.firstElementChild && target.firstElementChild.hasAttribute('data-row')) {
-              target.removeChild(target.firstElementChild);
-            }
             const emptyModel = whenEmptyTemplate.content.firstElementChild.cloneNode(true);
             emptyModel.classList.add('empty-model');
             target.appendChild(emptyModel);
@@ -281,6 +362,14 @@ qx.Class.define('cv.ui.structure.tile.components.List', {
           const emptyElem = target.querySelector(':scope > .empty-model');
           if (emptyElem) {
             emptyElem.remove();
+          }
+
+          let child;
+          for (let i = target.children.length-1; i >=0; i--) {
+            child = target.children[i];
+            if (child.hasAttribute('data-row') && parseInt(child.getAttribute('data-row')) >= newModel.length) {
+              target.removeChild(child);
+            }
           }
         }
         const itemTemplate = document.createElement('template');
@@ -315,9 +404,8 @@ qx.Class.define('cv.ui.structure.tile.components.List', {
           }
           return '';
         };
-
         newModel.forEach((entry, i) => {
-          const elem = target.querySelector(`:scope > [data-row="${i}"]`);
+          let elem = target.querySelector(`:scope > [data-row="${i}"]`);
           const html = template.innerHTML.replaceAll(/\${([^}]+)}/g, (match, content) => {
             if (content === 'index') {
               return '' + i;
@@ -330,6 +418,27 @@ qx.Class.define('cv.ui.structure.tile.components.List', {
                 if (val) {
                   return val;
                 }
+              }
+            } else if (content.includes('|')) {
+              // formatting rules
+              const [name, format] = content.split('|');
+              const val = getValue(name, entry);
+              if (val instanceof Date) {
+                const df = new qx.util.format.DateFormat(format);
+                return df.format(val);
+              } else if (val) {
+                return val;
+              }
+            } else if (content.includes('.')) {
+              // first part is an object value, the latter part is JS code then
+              const [name] = content.split('.', 1);
+              const code = content.substring(name.length+1);
+              const val = getValue(name, entry);
+              if (val instanceof Object) {
+                try {
+                  const func = new Function('obj', `return obj.${code};`);
+                  return func(val);
+                } catch (e) {}
               }
             }
             return getValue(content, entry);
@@ -353,17 +462,23 @@ qx.Class.define('cv.ui.structure.tile.components.List', {
             // update existing
             elem.innerHTML = itemTemplate.content.firstElementChild.innerHTML;
             elem.setAttribute('data-row', '' + i);
+            this._initElement(elem, entry);
           } else {
             // append new child
             itemTemplate.content.firstElementChild.setAttribute('data-row', '' + i);
-
-            target.appendChild(itemTemplate.content.cloneNode(true));
+            elem = itemTemplate.content.cloneNode(true);
+            this._initElement(elem.firstElementChild, entry);
+            target.appendChild(elem);
           }
         });
         this._model = newModel;
       } else {
         this.error('model must be an array', newModel);
       }
+    },
+
+    _initElement(elem, entry) {
+      elem.$$model = entry;
     }
   },
 

@@ -34,21 +34,36 @@ qx.Class.define('cv.io.rest.Client', {
     __dirClient: null,
     __dpClient: null,
     __callbacks: {},
+    AUTH_REQUIRED: false,
 
     getBaseUrl() {
       if (!this.BASE_URL) {
         let path = '';
-        const engine = cv.TemplateEngine.getInstance();
-        const clientBackend =
-          engine.visu && typeof engine.visu.getBackend === 'function' ? engine.visu.getBackend() : {};
-        if (clientBackend.resources && clientBackend.resources.rest) {
-          path = clientBackend.resources.rest;
+        if (qx.core.Init.getApplication().isServedByOpenhab()) {
+          path = '/rest/cv';
         } else {
-          path = qx.util.Uri.parseUri(window.location.href).directory + 'rest/manager/index.php';
+          path =
+            qx.util.Uri.parseUri(window.location.href).directory +
+            'rest/manager/index.php';
         }
         this.BASE_URL = path;
       }
       return this.BASE_URL;
+    },
+
+    checkAuth(req) {
+      if (this.AUTH_REQUIRED) {
+        if (qx.core.Init.getApplication().isServedByOpenhab()) {
+          const backend = cv.io.BackendConnections.getClientByType('openhab');
+          if (backend) {
+            backend.authorize(req);
+          } else {
+            qx.log.Logger.warn('no openHAB backend configured, cannot authorize');
+          }
+        } else {
+          qx.log.Logger.warn('authentication is currently only implemented for the openHAB API backend');
+        }
+      }
     },
 
     getConfigClient() {
@@ -90,6 +105,7 @@ qx.Class.define('cv.io.rest.Client', {
             req.setRequestHeader('Content-Type', 'application/json');
           }
           req.setAccept('application/json');
+          cv.io.rest.Client.checkAuth(req);
         });
 
         this._enableSync(this.__configFile, config);
@@ -154,6 +170,7 @@ qx.Class.define('cv.io.rest.Client', {
             }
             req.setAccept('application/json');
           }
+          cv.io.rest.Client.checkAuth(req);
         });
 
         this._enableSync(this.__dirClient, config);
@@ -208,6 +225,7 @@ qx.Class.define('cv.io.rest.Client', {
         if (cv.Config.transactionId) {
           this.__dpClient.configureRequest(function (req, action, params) {
             req.setRequestHeader('X-Transaction-ID', cv.Config.transactionId);
+            cv.io.rest.Client.checkAuth(req);
           });
         }
 

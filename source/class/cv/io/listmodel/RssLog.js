@@ -13,7 +13,15 @@ qx.Class.define('cv.io.listmodel.RssLog', {
   construct() {
     super();
     this.initModel(new qx.data.Array());
-    this._initRequest();
+  },
+
+  /*
+  ***********************************************
+    STATICS
+  ***********************************************
+  */
+  statics: {
+    REQUIRES: ['php']
   },
 
   /*
@@ -59,7 +67,9 @@ qx.Class.define('cv.io.listmodel.RssLog', {
   ***********************************************
   */
   events: {
-    finished: 'qy.event.type.Data'
+    finished: 'qx.event.type.Data',
+    // this event is sent when the model itself wants to trigger a list refresh.
+    refresh: 'qx.event.type.Event'
   },
 
   /*
@@ -88,8 +98,7 @@ qx.Class.define('cv.io.listmodel.RssLog', {
       }
     },
 
-    _initRequest() {
-      this.__request = new qx.io.request.Xhr(qx.util.ResourceManager.getInstance().toUri('plugins/rsslog/rsslog.php'));
+    getRequestData() {
       const requestData = {};
       if (this.getDatabase()) {
         requestData.database = this.getDatabase();
@@ -104,9 +113,24 @@ qx.Class.define('cv.io.listmodel.RssLog', {
         requestData.future = this.getFuture();
       }
       requestData.j = 1;
+      return requestData;
+    },
+
+    _getUrl() {
+      return qx.util.ResourceManager.getInstance().toUri('plugins/rsslog/rsslog.php');
+    },
+
+    _initRequest() {
+      const url = this._getUrl();
+      if (!url) {
+        this.error('no url to query!');
+        return;
+      }
+      this.__request = new qx.io.request.Xhr(url);
+
       this.__request.set({
         accept: 'application/json',
-        requestData: requestData,
+        requestData: this.getRequestData(),
         method: 'GET'
       });
 
@@ -120,6 +144,18 @@ qx.Class.define('cv.io.listmodel.RssLog', {
         );
         this.fireDataEvent('finished', false);
       });
+      this.__request.addListener('timeout', ev => {
+        this.error(
+          'C: #rss_%s, timeout, Feed: %s',
+          this.getPath(),
+          this.__request.getUrl()
+        );
+        this.fireDataEvent('finished', false);
+      });
+    },
+
+    _convertResponse(data) {
+      return data.responseData.feed.entries;
     },
 
     __updateModel(ev) {
@@ -128,21 +164,87 @@ qx.Class.define('cv.io.listmodel.RssLog', {
         // no json -> error
         this.error('Expected JSON, but got response MIME:', ev.getTarget().getResponseContentType());
         this.error(response);
+        this.fireDataEvent('finished', false);
       } else {
         const model = this.getModel();
-        model.replace(response.responseData.feed.entries);
+        const data = this._convertResponse(response);
+        for (const entry of data) {
+          if (entry.mapping) {
+            entry.mappedState = cv.Application.structureController.mapValue(entry.mapping, entry.state);
+          }
+          if (entry.publishedDate) {
+            try {
+              entry.published = new Date(entry.publishedDate);
+            } catch (e) {}
+          }
+        }
+        model.replace(data);
+        this.fireDataEvent('finished', true);
       }
-      this.fireDataEvent('finished', false);
     },
 
     async refresh() {
-      if (this.__request) {
-        try {
-          await this._sendWithPromise();
-        } catch (e) {
-          this.error(e.message);
+      if (!this.__request) {
+        this._initRequest();
+      }
+      try {
+        await this._sendWithPromise();
+      } catch (e) {
+        this.error(e.message);
+      }
+    },
+
+    handleEvent(ev, data, model) {
+      let handled = false;
+      const requestData = {};
+      if (this.getDatabase()) {
+        requestData.database = this.getDatabase();
+      }
+      let needsConfirmation = false;
+      let confirmTitle = '';
+      let confirmMessage = '';
+      switch (data.action) {
+        case 'toggle-state':
+          requestData.u = model.id;
+          requestData.state = model.state === '0' ? '1' : '0';
+          handled = true;
+          break;
+
+        case 'delete':
+          requestData.d = model.id;
+          needsConfirmation = data['no-confirm'] !== 'true';
+          confirmTitle = qx.locale.Manager.tr('Confirm deletion');
+          confirmMessage = qx.locale.Manager.tr('Do you really want to delete this entry?');
+          handled = true;
+          break;
+
+        default:
+          this.error('unhandled event ', data.action);
+          break;
+      }
+      if (handled) {
+        const req = new qx.io.request.Xhr(this.__request.getUrl());
+        req.set({
+          method: 'GET',
+          accept: 'application/json',
+          requestData: requestData
+        });
+        req.addListener('success', async () => {
+          this.fireEvent('refresh');
+        });
+        if (needsConfirmation) {
+          cv.ui.PopupHandler.confirm(confirmTitle, confirmMessage, confirmed => {
+              if (confirmed) {
+                req.send();
+              }
+            }
+          );
+        } else {
+          req.send();
         }
       }
+
+      return handled;
     },
 
     async _sendWithPromise() {
